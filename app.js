@@ -14,6 +14,8 @@ let chats = JSON.parse(localStorage.getItem('chats')) || [];
 let messages = JSON.parse(localStorage.getItem('messages')) || {};
 let currentChatId = null;
 let ws = null;
+let folders = JSON.parse(localStorage.getItem('folders')) || [];
+let replyToMessage = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -109,6 +111,17 @@ async function register() {
         return;
     }
     
+    // Валидация username: только латиница и цифры
+    if (!/^[a-zA-Z0-9]+$/.test(username)) {
+        alert('Username может содержать только латинские буквы и цифры (без пробелов, тире и русских букв)');
+        return;
+    }
+    
+    if (username.length < 3) {
+        alert('Username должен быть минимум 3 символа');
+        return;
+    }
+    
     if (password !== passwordConfirm) {
         alert('Пароли не совпадают');
         return;
@@ -188,12 +201,18 @@ function setupAppEventListeners() {
         if (e.key === 'Enter') sendMessage();
     });
     
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.addEventListener('click', () => {
-            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
-        });
+    // Photo upload
+    document.getElementById('attachBtn').addEventListener('click', () => {
+        document.getElementById('photoInput').click();
     });
+    
+    document.getElementById('photoInput').addEventListener('change', handlePhotoUpload);
+    
+    // Folders
+    document.getElementById('createFolder').addEventListener('click', createFolder);
+    
+    // Chat management
+    document.getElementById('addMemberBtn').addEventListener('click', addMemberToChat);
 }
 
 function updateMenuProfile() {
@@ -223,6 +242,12 @@ function searchUsers() {
         return;
     }
     
+    // Search in existing chats first
+    const matchingChats = chats.filter(c => 
+        c.name.toLowerCase().includes(query)
+    );
+    
+    // Search for users not in chats
     const results = users.filter(u => 
         u.id !== currentUser.id && 
         (u.name.toLowerCase().includes(query) || u.username.toLowerCase().includes(query))
@@ -231,31 +256,78 @@ function searchUsers() {
     const chatList = document.getElementById('chatList');
     chatList.innerHTML = '';
     
-    if (results.length === 0) {
+    // Show matching chats first
+    if (matchingChats.length > 0) {
+        const chatsHeader = document.createElement('div');
+        chatsHeader.className = 'search-section-header';
+        chatsHeader.textContent = 'Чаты и группы';
+        chatList.appendChild(chatsHeader);
+        
+        matchingChats.forEach(chat => {
+            const chatItem = document.createElement('div');
+            chatItem.className = 'chat-item';
+            chatItem.dataset.chatId = chat.id;
+            
+            if (currentChatId === chat.id) {
+                chatItem.classList.add('active');
+            }
+            
+            chatItem.innerHTML = `
+                <img src="${chat.avatar}" alt="${chat.name}" class="chat-item-avatar">
+                <div class="chat-item-content">
+                    <div class="chat-item-header">
+                        <span class="chat-item-name">${chat.name}</span>
+                        <span class="chat-item-time">${chat.time}</span>
+                    </div>
+                    <div class="chat-item-message">${chat.lastMessage || 'Нет сообщений'}</div>
+                </div>
+            `;
+            chatItem.addEventListener('click', () => {
+                document.getElementById('searchInput').value = '';
+                openChat(chat.id);
+            });
+            chatList.appendChild(chatItem);
+        });
+    }
+    
+    // Show users
+    if (results.length > 0) {
+        const usersHeader = document.createElement('div');
+        usersHeader.className = 'search-section-header';
+        usersHeader.textContent = 'Пользователи';
+        chatList.appendChild(usersHeader);
+        
+        results.forEach(user => {
+            const chatItem = document.createElement('div');
+            chatItem.className = 'chat-item';
+            chatItem.innerHTML = `
+                <img src="${user.avatar}" alt="${user.name}" class="chat-item-avatar">
+                <div class="chat-item-content">
+                    <div class="chat-item-header">
+                        <span class="chat-item-name">${user.name}</span>
+                    </div>
+                    <div class="chat-item-message">@${user.username}</div>
+                </div>
+            `;
+            chatItem.addEventListener('click', () => {
+                document.getElementById('searchInput').value = '';
+                startChatWithUser(user);
+            });
+            chatList.appendChild(chatItem);
+        });
+    }
+    
+    if (matchingChats.length === 0 && results.length === 0) {
         chatList.innerHTML = `
             <div class="empty-state">
-                <h3>Пользователи не найдены</h3>
+                <svg width="80" height="80" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
+                    <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                </svg>
+                <h3>Ничего не найдено</h3>
                 <p>Попробуйте другой запрос</p>
             </div>
         `;
-        return;
     }
-    
-    results.forEach(user => {
-        const chatItem = document.createElement('div');
-        chatItem.className = 'chat-item';
-        chatItem.innerHTML = `
-            <img src="${user.avatar}" alt="${user.name}" class="chat-item-avatar">
-            <div class="chat-item-content">
-                <div class="chat-item-header">
-                    <span class="chat-item-name">${user.name}</span>
-                </div>
-                <div class="chat-item-message">@${user.username}</div>
-            </div>
-        `;
-        chatItem.addEventListener('click', () => startChatWithUser(user));
-        chatList.appendChild(chatItem);
-    });
 }
 
 function startChatWithUser(user) {
@@ -344,8 +416,27 @@ function openChat(chatId) {
     if (activeItem) activeItem.classList.add('active');
     
     document.getElementById('chatName').textContent = chat.name;
-    document.getElementById('chatStatus').textContent = 'online';
+    
+    // Show participant count for groups/channels
+    let statusText = 'online';
+    if (chat.type === 'group') {
+        const memberCount = chat.participants ? chat.participants.length : 1;
+        statusText = `${memberCount} участников`;
+    } else if (chat.type === 'channel') {
+        const memberCount = chat.participants ? chat.participants.length : 1;
+        statusText = `${memberCount} подписчиков`;
+    }
+    
+    document.getElementById('chatStatus').textContent = statusText;
     document.getElementById('chatAvatar').src = chat.avatar;
+    
+    // Show/hide add member button
+    const addMemberBtn = document.getElementById('addMemberBtn');
+    if (chat.type === 'group' || chat.type === 'channel') {
+        addMemberBtn.style.display = 'flex';
+    } else {
+        addMemberBtn.style.display = 'none';
+    }
     
     chat.unread = 0;
     saveChats();
@@ -359,6 +450,8 @@ function renderMessages(chatId) {
     container.innerHTML = '';
     
     const chatMessages = messages[chatId] || [];
+    const chat = chats.find(c => c.id === chatId);
+    const isGroupChat = chat && (chat.type === 'group' || chat.type === 'channel');
     
     if (chatMessages.length === 0) {
         container.innerHTML = `
@@ -371,19 +464,185 @@ function renderMessages(chatId) {
     
     chatMessages.forEach(msg => {
         const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${msg.userId === currentUser.id ? 'sent' : 'received'}`;
+        const isSent = msg.userId === currentUser.id;
+        messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+        messageDiv.dataset.messageId = msg.id;
         
-        messageDiv.innerHTML = `
-            <div class="message-bubble">
-                <div class="message-text">${escapeHtml(msg.text)}</div>
-                <div class="message-time">${msg.time}</div>
-            </div>
-        `;
+        // Get sender info
+        let senderAvatar = '';
+        let senderName = msg.userName || 'Пользователь';
         
+        if (!isSent) {
+            const sender = users.find(u => u.id === msg.userId);
+            if (sender) {
+                senderAvatar = sender.avatar;
+                senderName = sender.name;
+            } else {
+                senderAvatar = generateAvatar(senderName);
+            }
+        }
+        
+        let content = '';
+        
+        // Reply preview
+        let replyHtml = '';
+        if (msg.replyTo) {
+            const replyMsg = chatMessages.find(m => m.id === msg.replyTo);
+            if (replyMsg) {
+                const replyText = replyMsg.text || (replyMsg.type === 'photo' ? '📷 Фото' : 'Сообщение');
+                replyHtml = `
+                    <div class="message-reply" onclick="scrollToMessage(${msg.replyTo})">
+                        <div class="reply-line"></div>
+                        <div class="reply-content">
+                            <div class="reply-author">${replyMsg.userName || 'Пользователь'}</div>
+                            <div class="reply-text">${escapeHtml(replyText)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        if (msg.type === 'photo') {
+            content = `
+                ${!isSent && isGroupChat ? `<img src="${senderAvatar}" class="message-avatar" alt="${senderName}">` : ''}
+                <div class="message-bubble">
+                    ${!isSent && isGroupChat ? `<div class="message-sender" style="color: ${getColorForUser(msg.userId)}">${senderName}</div>` : ''}
+                    ${replyHtml}
+                    <img src="${msg.photo}" class="message-photo" alt="photo">
+                    <div class="message-footer">
+                        <div class="message-time">${msg.time}</div>
+                        <button class="reaction-btn" onclick="showReactionPicker(${msg.id})">😊</button>
+                        <button class="reply-btn" onclick="setReplyTo(${msg.id})">↩</button>
+                    </div>
+                    ${renderReactions(msg.reactions)}
+                </div>
+            `;
+        } else {
+            content = `
+                ${!isSent && isGroupChat ? `<img src="${senderAvatar}" class="message-avatar" alt="${senderName}">` : ''}
+                <div class="message-bubble">
+                    ${!isSent && isGroupChat ? `<div class="message-sender" style="color: ${getColorForUser(msg.userId)}">${senderName}</div>` : ''}
+                    ${replyHtml}
+                    <div class="message-text">${escapeHtml(msg.text)}</div>
+                    <div class="message-footer">
+                        <div class="message-time">${msg.time}</div>
+                        <button class="reaction-btn" onclick="showReactionPicker(${msg.id})">😊</button>
+                        <button class="reply-btn" onclick="setReplyTo(${msg.id})">↩</button>
+                    </div>
+                    ${renderReactions(msg.reactions)}
+                </div>
+            `;
+        }
+        
+        messageDiv.innerHTML = content;
         container.appendChild(messageDiv);
     });
     
     container.scrollTop = container.scrollHeight;
+}
+
+function getColorForUser(userId) {
+    const colors = ['#e17076', '#7f8c8d', '#a695e7', '#7bc862', '#ee7aae', '#6ec9cb', '#65aadd', '#ee8157'];
+    const index = userId % colors.length;
+    return colors[index];
+}
+
+window.scrollToMessage = function(messageId) {
+    const messageEl = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (messageEl) {
+        messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        messageEl.classList.add('highlight');
+        setTimeout(() => messageEl.classList.remove('highlight'), 2000);
+    }
+};
+
+function renderReactions(reactions) {
+    if (!reactions || Object.keys(reactions).length === 0) return '';
+    
+    let html = '<div class="message-reactions">';
+    for (const [emoji, users] of Object.entries(reactions)) {
+        const count = users.length;
+        const hasMyReaction = users.includes(currentUser.id);
+        html += `<span class="reaction ${hasMyReaction ? 'my-reaction' : ''}">${emoji} ${count}</span>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+window.showReactionPicker = function(messageId) {
+    const emojis = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉'];
+    const picker = document.createElement('div');
+    picker.className = 'emoji-picker';
+    picker.innerHTML = emojis.map(e => `<span class="emoji-option" onclick="addReaction(${messageId}, '${e}')">${e}</span>`).join('');
+    
+    document.body.appendChild(picker);
+    
+    setTimeout(() => {
+        picker.addEventListener('click', () => {
+            picker.remove();
+        });
+        document.addEventListener('click', function removePickerOnClick() {
+            picker.remove();
+            document.removeEventListener('click', removePickerOnClick);
+        });
+    }, 10);
+};
+
+window.addReaction = function(messageId, emoji) {
+    if (!currentChatId) return;
+    
+    const chatMessages = messages[currentChatId];
+    const message = chatMessages.find(m => m.id === messageId);
+    
+    if (!message) return;
+    
+    if (!message.reactions) {
+        message.reactions = {};
+    }
+    
+    if (!message.reactions[emoji]) {
+        message.reactions[emoji] = [];
+    }
+    
+    const userIndex = message.reactions[emoji].indexOf(currentUser.id);
+    if (userIndex > -1) {
+        message.reactions[emoji].splice(userIndex, 1);
+        if (message.reactions[emoji].length === 0) {
+            delete message.reactions[emoji];
+        }
+    } else {
+        message.reactions[emoji].push(currentUser.id);
+    }
+    
+    saveMessages();
+    renderMessages(currentChatId);
+    
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'reaction',
+            chatId: currentChatId,
+            messageId: messageId,
+            reactions: message.reactions
+        }));
+    }
+};
+
+window.setReplyTo = function(messageId) {
+    replyToMessage = messageId;
+    const chatMessages = messages[currentChatId];
+    const message = chatMessages.find(m => m.id === messageId);
+    
+    if (!message) return;
+    
+    const replyPreview = document.getElementById('replyPreview');
+    replyPreview.classList.remove('hidden');
+    document.getElementById('replyAuthor').textContent = message.userName || 'Пользователь';
+    document.getElementById('replyText').textContent = message.text || '📷 Фото';
+};
+
+function cancelReply() {
+    replyToMessage = null;
+    document.getElementById('replyPreview').classList.add('hidden');
 }
 
 function sendMessage() {
@@ -398,10 +657,17 @@ function sendMessage() {
     const message = {
         id: Date.now(),
         userId: currentUser.id,
+        userName: currentUser.name,
         text: text,
         time: time,
-        createdAt: now.toISOString()
+        createdAt: now.toISOString(),
+        reactions: {}
     };
+    
+    if (replyToMessage) {
+        message.replyTo = replyToMessage;
+        cancelReply();
+    }
     
     if (!messages[currentChatId]) {
         messages[currentChatId] = [];
@@ -563,6 +829,18 @@ function handleWebSocketMessage(data) {
                 renderChats();
             }
         }
+    } else if (data.type === 'reaction' && data.chatId) {
+        const chatMessages = messages[data.chatId];
+        if (chatMessages) {
+            const message = chatMessages.find(m => m.id === data.messageId);
+            if (message) {
+                message.reactions = data.reactions;
+                saveMessages();
+                if (currentChatId === data.chatId) {
+                    renderMessages(data.chatId);
+                }
+            }
+        }
     }
 }
 
@@ -573,4 +851,135 @@ if (localStorage.getItem('darkMode') === 'true') {
         const toggle = document.getElementById('nightModeToggle');
         if (toggle) toggle.checked = true;
     }, 100);
+}
+
+
+function handlePhotoUpload(e) {
+    const file = e.target.files[0];
+    if (!file || !currentChatId) return;
+    
+    if (file.size > 5 * 1024 * 1024) {
+        alert('Файл слишком большой! Максимум 5MB');
+        return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const now = new Date();
+        const time = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+        
+        const message = {
+            id: Date.now(),
+            userId: currentUser.id,
+            userName: currentUser.name,
+            type: 'photo',
+            photo: event.target.result,
+            time: time,
+            createdAt: now.toISOString(),
+            reactions: {}
+        };
+        
+        if (replyToMessage) {
+            message.replyTo = replyToMessage;
+            cancelReply();
+        }
+        
+        if (!messages[currentChatId]) {
+            messages[currentChatId] = [];
+        }
+        
+        messages[currentChatId].push(message);
+        saveMessages();
+        
+        const chat = chats.find(c => c.id === currentChatId);
+        if (chat) {
+            chat.lastMessage = '📷 Фото';
+            chat.time = time;
+            saveChats();
+            renderChats();
+        }
+        
+        renderMessages(currentChatId);
+        
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'message',
+                chatId: currentChatId,
+                message: message
+            }));
+        }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+}
+
+function createFolder() {
+    const name = prompt('Название папки:');
+    if (!name) return;
+    
+    const folder = {
+        id: Date.now(),
+        name: name,
+        chatIds: []
+    };
+    
+    folders.push(folder);
+    localStorage.setItem('folders', JSON.stringify(folders));
+    alert('Папка создана! Теперь вы можете добавлять в неё чаты через меню чата');
+    toggleMenu();
+}
+
+function addMemberToChat() {
+    if (!currentChatId) {
+        alert('Выберите чат');
+        return;
+    }
+    
+    const chat = chats.find(c => c.id === currentChatId);
+    if (!chat) return;
+    
+    if (chat.type === 'private') {
+        alert('Нельзя добавлять участников в личный чат');
+        return;
+    }
+    
+    const username = prompt('Введите username пользователя для добавления:');
+    if (!username) return;
+    
+    const user = users.find(u => u.username === username.replace('@', ''));
+    if (!user) {
+        alert('Пользователь не найден');
+        return;
+    }
+    
+    if (chat.participants.includes(user.id)) {
+        alert('Пользователь уже в чате');
+        return;
+    }
+    
+    chat.participants.push(user.id);
+    saveChats();
+    
+    const systemMessage = {
+        id: Date.now(),
+        userId: 0,
+        userName: 'Система',
+        text: `${user.name} добавлен в ${chat.type === 'group' ? 'группу' : 'канал'}`,
+        time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toISOString(),
+        reactions: {}
+    };
+    
+    if (!messages[currentChatId]) {
+        messages[currentChatId] = [];
+    }
+    messages[currentChatId].push(systemMessage);
+    saveMessages();
+    renderMessages(currentChatId);
+    
+    alert(`${user.name} добавлен в чат`);
+}
+
+function saveFolders() {
+    localStorage.setItem('folders', JSON.stringify(folders));
 }
