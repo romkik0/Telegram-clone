@@ -262,6 +262,8 @@ function setupAppEventListeners() {
     
     document.getElementById('searchInput').addEventListener('input', searchUsers);
     
+    document.getElementById('searchByUsernameBtn').addEventListener('click', searchByUsername);
+    
     document.getElementById('sendBtn').addEventListener('click', sendMessage);
     document.getElementById('messageInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
@@ -341,18 +343,22 @@ function searchUsers() {
         .then(res => res.json())
         .then(data => {
             users = data;
-            console.log('Search: loaded', users.length, 'users');
+            console.log('Search: loaded', users.length, 'users, searching for:', query);
             
             // Search in existing chats first
             const matchingChats = chats.filter(c => 
                 c.name.toLowerCase().includes(query)
             );
             
-            // Search for users not in chats
+            // Search for users - by name OR username
             const results = users.filter(u => 
                 u.id !== currentUser.id && 
-                (u.name.toLowerCase().includes(query) || u.username.toLowerCase().includes(query))
+                (u.name.toLowerCase().includes(query) || 
+                 u.username.toLowerCase().includes(query) ||
+                 u.username.toLowerCase() === query.replace('@', ''))
             );
+            
+            console.log('Found users:', results.map(u => u.username));
             
             const chatList = document.getElementById('chatList');
             chatList.innerHTML = '';
@@ -395,7 +401,7 @@ function searchUsers() {
             if (results.length > 0) {
                 const usersHeader = document.createElement('div');
                 usersHeader.className = 'search-section-header';
-                usersHeader.textContent = 'Пользователи';
+                usersHeader.textContent = `Пользователи (${results.length})`;
                 chatList.appendChild(usersHeader);
                 
                 results.forEach(user => {
@@ -425,7 +431,7 @@ function searchUsers() {
                             <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
                         </svg>
                         <h3>Ничего не найдено</h3>
-                        <p>Попробуйте другой запрос</p>
+                        <p>Попробуйте поиск по username<br>(нажмите кнопку с человечком)</p>
                     </div>
                 `;
             }
@@ -1372,3 +1378,69 @@ function showAddMemberDialog() {
 }
 
 window.showAddMemberDialog = showAddMemberDialog;
+
+// Search by username function
+async function searchByUsername() {
+    const username = prompt('Введите username (без @):');
+    if (!username) return;
+    
+    const cleanUsername = username.replace('@', '').trim().toLowerCase();
+    
+    if (!cleanUsername) {
+        alert('Введите username');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/users');
+        const allUsers = await response.json();
+        
+        console.log('Searching for username:', cleanUsername);
+        console.log('Available users:', allUsers.map(u => u.username));
+        
+        const user = allUsers.find(u => u.username.toLowerCase() === cleanUsername);
+        
+        if (user && user.id !== currentUser.id) {
+            console.log('User found:', user);
+            
+            // Update global users array
+            users = allUsers;
+            
+            // Show user in search results
+            const chatList = document.getElementById('chatList');
+            chatList.innerHTML = '';
+            
+            const usersHeader = document.createElement('div');
+            usersHeader.className = 'search-section-header';
+            usersHeader.textContent = 'Найден пользователь';
+            chatList.appendChild(usersHeader);
+            
+            const chatItem = document.createElement('div');
+            chatItem.className = 'chat-item';
+            chatItem.innerHTML = `
+                <img src="${user.avatar}" alt="${user.name}" class="chat-item-avatar">
+                <div class="chat-item-content">
+                    <div class="chat-item-header">
+                        <span class="chat-item-name">${user.name}</span>
+                    </div>
+                    <div class="chat-item-message">@${user.username}</div>
+                </div>
+            `;
+            chatItem.addEventListener('click', () => {
+                startChatWithUser(user);
+            });
+            chatList.appendChild(chatItem);
+            
+            // Clear search input
+            document.getElementById('searchInput').value = '';
+        } else if (user && user.id === currentUser.id) {
+            alert('Это вы!');
+        } else {
+            alert(`Пользователь @${cleanUsername} не найден.\n\nПроверьте:\n- Правильность написания\n- Пользователь должен быть зарегистрирован`);
+            console.log('User not found. Searched for:', cleanUsername);
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+        alert('Ошибка поиска. Попробуйте еще раз.');
+    }
+}
