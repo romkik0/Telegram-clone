@@ -40,14 +40,18 @@ async function loadDataFromServer() {
         const usersRes = await fetch('/api/users');
         if (usersRes.ok) {
             users = await usersRes.json();
-            console.log('Loaded users:', users.length);
+            console.log('✅ Loaded users:', users.length);
         }
         
-        // Load chats
+        // Load chats - filter by current user
         const chatsRes = await fetch('/api/chats');
         if (chatsRes.ok) {
-            chats = await chatsRes.json();
-            console.log('Loaded chats:', chats.length);
+            const allChats = await chatsRes.json();
+            // Show only chats where user is participant
+            chats = allChats.filter(chat => 
+                chat.participants && chat.participants.includes(currentUser.id)
+            );
+            console.log('✅ Loaded chats:', chats.length, 'of', allChats.length, 'total');
         }
         
         // Load messages for current chats
@@ -59,13 +63,14 @@ async function loadDataFromServer() {
             }
         }
         
-        console.log('Data loaded successfully');
+        console.log('✅ Data loaded successfully');
     } catch (error) {
-        console.error('Error loading data:', error);
+        console.error('❌ Error loading data:', error);
         // If server fails, try to use localStorage as fallback
         users = JSON.parse(localStorage.getItem('users_backup')) || [];
         chats = JSON.parse(localStorage.getItem('chats_backup')) || [];
         messages = JSON.parse(localStorage.getItem('messages_backup')) || {};
+        console.log('⚠️ Using backup data');
     }
 }
 
@@ -338,109 +343,172 @@ function searchUsers() {
         return;
     }
     
-    // Reload users from server for search
-    fetch('/api/users')
-        .then(res => res.json())
-        .then(data => {
-            users = data;
-            console.log('Search: loaded', users.length, 'users, searching for:', query);
+    // Reload data from server for search
+    Promise.all([
+        fetch('/api/users').then(res => res.json()),
+        fetch('/api/chats').then(res => res.json())
+    ])
+    .then(([allUsers, allChats]) => {
+        users = allUsers;
+        const allChatsData = allChats;
+        
+        console.log('🔍 Search: loaded', users.length, 'users and', allChatsData.length, 'chats, searching for:', query);
+        
+        // Search in user's chats
+        const matchingChats = chats.filter(c => 
+            c.name.toLowerCase().includes(query)
+        );
+        
+        // Search in all public groups/channels
+        const publicChats = allChatsData.filter(c => 
+            (c.type === 'group' || c.type === 'channel') &&
+            c.name.toLowerCase().includes(query) &&
+            (!c.participants || !c.participants.includes(currentUser.id))
+        );
+        
+        // Search for users - by name OR username
+        const results = users.filter(u => 
+            u.id !== currentUser.id && 
+            (u.name.toLowerCase().includes(query) || 
+             u.username.toLowerCase().includes(query) ||
+             u.username.toLowerCase() === query.replace('@', ''))
+        );
+        
+        console.log('📊 Found:', matchingChats.length, 'my chats,', publicChats.length, 'public chats,', results.length, 'users');
+        
+        const chatList = document.getElementById('chatList');
+        chatList.innerHTML = '';
+        
+        // Show user's matching chats first
+        if (matchingChats.length > 0) {
+            const chatsHeader = document.createElement('div');
+            chatsHeader.className = 'search-section-header';
+            chatsHeader.textContent = 'Мои чаты';
+            chatList.appendChild(chatsHeader);
             
-            // Search in existing chats first
-            const matchingChats = chats.filter(c => 
-                c.name.toLowerCase().includes(query)
-            );
+            matchingChats.forEach(chat => {
+                const chatItem = createChatItem(chat, true);
+                chatList.appendChild(chatItem);
+            });
+        }
+        
+        // Show public groups/channels
+        if (publicChats.length > 0) {
+            const publicHeader = document.createElement('div');
+            publicHeader.className = 'search-section-header';
+            publicHeader.textContent = 'Группы и каналы';
+            chatList.appendChild(publicHeader);
             
-            // Search for users - by name OR username
-            const results = users.filter(u => 
-                u.id !== currentUser.id && 
-                (u.name.toLowerCase().includes(query) || 
-                 u.username.toLowerCase().includes(query) ||
-                 u.username.toLowerCase() === query.replace('@', ''))
-            );
-            
-            console.log('Found users:', results.map(u => u.username));
-            
-            const chatList = document.getElementById('chatList');
-            chatList.innerHTML = '';
-            
-            // Show matching chats first
-            if (matchingChats.length > 0) {
-                const chatsHeader = document.createElement('div');
-                chatsHeader.className = 'search-section-header';
-                chatsHeader.textContent = 'Чаты и группы';
-                chatList.appendChild(chatsHeader);
-                
-                matchingChats.forEach(chat => {
-                    const chatItem = document.createElement('div');
-                    chatItem.className = 'chat-item';
-                    chatItem.dataset.chatId = chat.id;
-                    
-                    if (currentChatId === chat.id) {
-                        chatItem.classList.add('active');
+            publicChats.forEach(chat => {
+                const chatItem = createChatItem(chat, false);
+                chatItem.addEventListener('click', () => {
+                    if (confirm(`Присоединиться к ${chat.type === 'group' ? 'группе' : 'каналу'} "${chat.name}"?`)) {
+                        joinChat(chat);
                     }
-                    
-                    chatItem.innerHTML = `
-                        <img src="${chat.avatar}" alt="${chat.name}" class="chat-item-avatar">
-                        <div class="chat-item-content">
-                            <div class="chat-item-header">
-                                <span class="chat-item-name">${chat.name}</span>
-                                <span class="chat-item-time">${chat.time}</span>
-                            </div>
-                            <div class="chat-item-message">${chat.lastMessage || 'Нет сообщений'}</div>
-                        </div>
-                    `;
-                    chatItem.addEventListener('click', () => {
-                        document.getElementById('searchInput').value = '';
-                        openChat(chat.id);
-                    });
-                    chatList.appendChild(chatItem);
                 });
-            }
+                chatList.appendChild(chatItem);
+            });
+        }
+        
+        // Show users
+        if (results.length > 0) {
+            const usersHeader = document.createElement('div');
+            usersHeader.className = 'search-section-header';
+            usersHeader.textContent = `Пользователи (${results.length})`;
+            chatList.appendChild(usersHeader);
             
-            // Show users
-            if (results.length > 0) {
-                const usersHeader = document.createElement('div');
-                usersHeader.className = 'search-section-header';
-                usersHeader.textContent = `Пользователи (${results.length})`;
-                chatList.appendChild(usersHeader);
-                
-                results.forEach(user => {
-                    const chatItem = document.createElement('div');
-                    chatItem.className = 'chat-item';
-                    chatItem.innerHTML = `
-                        <img src="${user.avatar}" alt="${user.name}" class="chat-item-avatar">
-                        <div class="chat-item-content">
-                            <div class="chat-item-header">
-                                <span class="chat-item-name">${user.name}</span>
-                            </div>
-                            <div class="chat-item-message">@${user.username}</div>
+            results.forEach(user => {
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-item';
+                chatItem.innerHTML = `
+                    <img src="${user.avatar}" alt="${user.name}" class="chat-item-avatar">
+                    <div class="chat-item-content">
+                        <div class="chat-item-header">
+                            <span class="chat-item-name">${user.name}</span>
                         </div>
-                    `;
-                    chatItem.addEventListener('click', () => {
-                        document.getElementById('searchInput').value = '';
-                        startChatWithUser(user);
-                    });
-                    chatList.appendChild(chatItem);
-                });
-            }
-            
-            if (matchingChats.length === 0 && results.length === 0) {
-                chatList.innerHTML = `
-                    <div class="empty-state">
-                        <svg width="80" height="80" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
-                            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-                        </svg>
-                        <h3>Ничего не найдено</h3>
-                        <p>Попробуйте поиск по username<br>(нажмите кнопку с человечком)</p>
+                        <div class="chat-item-message">@${user.username}</div>
                     </div>
                 `;
-            }
-        })
-        .catch(error => {
-            console.error('Search error:', error);
-            const chatList = document.getElementById('chatList');
-            chatList.innerHTML = '<div class="empty-state"><h3>Ошибка поиска</h3><p>Попробуйте еще раз</p></div>';
+                chatItem.addEventListener('click', () => {
+                    document.getElementById('searchInput').value = '';
+                    startChatWithUser(user);
+                });
+                chatList.appendChild(chatItem);
+            });
+        }
+        
+        if (matchingChats.length === 0 && publicChats.length === 0 && results.length === 0) {
+            chatList.innerHTML = `
+                <div class="empty-state">
+                    <svg width="80" height="80" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
+                        <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                    </svg>
+                    <h3>Ничего не найдено</h3>
+                    <p>Попробуйте поиск по username<br>(нажмите кнопку с человечком)</p>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('❌ Search error:', error);
+        const chatList = document.getElementById('chatList');
+        chatList.innerHTML = '<div class="empty-state"><h3>Ошибка поиска</h3><p>Попробуйте еще раз</p></div>';
+    });
+}
+
+function createChatItem(chat, isOwn) {
+    const chatItem = document.createElement('div');
+    chatItem.className = 'chat-item';
+    if (isOwn) chatItem.dataset.chatId = chat.id;
+    
+    if (isOwn && currentChatId === chat.id) {
+        chatItem.classList.add('active');
+    }
+    
+    const typeIcon = chat.type === 'group' ? '👥' : chat.type === 'channel' ? '📢' : '';
+    
+    chatItem.innerHTML = `
+        <img src="${chat.avatar}" alt="${chat.name}" class="chat-item-avatar">
+        <div class="chat-item-content">
+            <div class="chat-item-header">
+                <span class="chat-item-name">${typeIcon} ${chat.name}</span>
+                ${isOwn ? `<span class="chat-item-time">${chat.time}</span>` : ''}
+            </div>
+            <div class="chat-item-message">${isOwn ? (chat.lastMessage || 'Нет сообщений') : (chat.participants ? chat.participants.length + ' участников' : '')}</div>
+        </div>
+    `;
+    
+    if (isOwn) {
+        chatItem.addEventListener('click', () => {
+            document.getElementById('searchInput').value = '';
+            openChat(chat.id);
         });
+    }
+    
+    return chatItem;
+}
+
+async function joinChat(chat) {
+    if (!chat.participants) chat.participants = [];
+    chat.participants.push(currentUser.id);
+    
+    try {
+        await fetch(`/api/chats/${chat.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chat)
+        });
+        
+        chats.unshift(chat);
+        document.getElementById('searchInput').value = '';
+        renderChats();
+        openChat(chat.id);
+        
+        alert('Вы присоединились!');
+    } catch (error) {
+        console.error('Error joining chat:', error);
+        alert('Ошибка присоединения');
+    }
 }
 
 async function startChatWithUser(user) {
@@ -836,6 +904,8 @@ async function createGroup() {
         name: name,
         avatar: generateAvatar(name),
         participants: [currentUser.id],
+        admins: [currentUser.id],
+        description: '',
         lastMessage: 'Группа создана',
         time: 'now',
         unread: 0,
@@ -845,13 +915,19 @@ async function createGroup() {
     chats.unshift(group);
     
     try {
-        await fetch('/api/chats', {
+        const response = await fetch('/api/chats', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(group)
         });
+        
+        if (response.ok) {
+            console.log('Group created:', group.name);
+            alert('Группа создана!');
+        }
     } catch (error) {
         console.error('Error creating group:', error);
+        alert('Ошибка создания группы');
     }
     
     renderChats();
@@ -868,6 +944,8 @@ async function createChannel() {
         name: name,
         avatar: generateAvatar(name),
         participants: [currentUser.id],
+        admins: [currentUser.id],
+        description: '',
         lastMessage: 'Канал создан',
         time: 'now',
         unread: 0,
@@ -877,13 +955,19 @@ async function createChannel() {
     chats.unshift(channel);
     
     try {
-        await fetch('/api/chats', {
+        const response = await fetch('/api/chats', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(channel)
         });
+        
+        if (response.ok) {
+            console.log('Channel created:', channel.name);
+            alert('Канал создан!');
+        }
     } catch (error) {
         console.error('Error creating channel:', error);
+        alert('Ошибка создания канала');
     }
     
     renderChats();
@@ -1357,10 +1441,13 @@ function showChatInfo() {
             if (user) {
                 const memberItem = document.createElement('div');
                 memberItem.className = 'member-item';
+                
+                const isAdmin = chat.admins && chat.admins.includes(userId);
+                
                 memberItem.innerHTML = `
                     <img src="${user.avatar}" alt="${user.name}" class="contact-avatar">
                     <div class="contact-info">
-                        <div class="contact-name">${user.name}</div>
+                        <div class="contact-name">${user.name} ${isAdmin ? '👑' : ''}</div>
                         <div class="contact-username">@${user.username}</div>
                     </div>
                 `;
@@ -1369,7 +1456,47 @@ function showChatInfo() {
         });
     }
     
+    // Add edit button for group/channel admins
+    const modalBody = document.querySelector('#chatInfoModal .modal-body');
+    const existingEditBtn = document.getElementById('editChatBtn');
+    if (existingEditBtn) existingEditBtn.remove();
+    
+    if ((chat.type === 'group' || chat.type === 'channel') && chat.admins && chat.admins.includes(currentUser.id)) {
+        const editBtn = document.createElement('button');
+        editBtn.id = 'editChatBtn';
+        editBtn.className = 'btn-secondary';
+        editBtn.textContent = 'Редактировать';
+        editBtn.style.marginTop = '10px';
+        editBtn.onclick = () => editChatSettings(chat);
+        modalBody.appendChild(editBtn);
+    }
+    
     openModal('chatInfoModal');
+}
+
+async function editChatSettings(chat) {
+    const newName = prompt('Название:', chat.name);
+    if (!newName || newName === chat.name) return;
+    
+    chat.name = newName;
+    
+    try {
+        await fetch(`/api/chats/${chat.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chat)
+        });
+        
+        // Update UI
+        document.getElementById('chatInfoName').textContent = newName;
+        document.getElementById('chatName').textContent = newName;
+        renderChats();
+        
+        alert('Настройки обновлены!');
+    } catch (error) {
+        console.error('Error updating chat:', error);
+        alert('Ошибка обновления');
+    }
 }
 
 function showAddMemberDialog() {
