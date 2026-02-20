@@ -227,6 +227,8 @@ function setupAppEventListeners() {
     document.getElementById('settings').addEventListener('click', showSettings);
     document.getElementById('logoutBtn').addEventListener('click', logout);
     
+    document.getElementById('chatInfoBtn').addEventListener('click', showChatInfo);
+    
     document.getElementById('nightModeToggle').addEventListener('change', toggleNightMode);
     document.getElementById('themeToggle').addEventListener('click', () => {
         document.getElementById('nightModeToggle').click();
@@ -816,14 +818,20 @@ async function createChannel() {
 }
 
 function showProfile() {
-    alert(`Профиль:\nИмя: ${currentUser.name}\nЛогин: @${currentUser.username}`);
     toggleMenu();
+    
+    document.getElementById('profileAvatar').src = currentUser.avatar;
+    document.getElementById('profileName').value = currentUser.name;
+    document.getElementById('profileUsername').value = currentUser.username;
+    document.getElementById('profileBio').value = currentUser.bio || '';
+    
+    openModal('profileModal');
 }
 
 function showContacts() {
-    const contacts = users.filter(u => u.id !== currentUser.id).map(u => u.name).join(', ');
-    alert('Контакты: ' + (contacts || 'Нет контактов'));
     toggleMenu();
+    openModal('contactsModal');
+    renderContacts();
 }
 
 function showSavedMessages() {
@@ -832,8 +840,24 @@ function showSavedMessages() {
 }
 
 function showSettings() {
-    alert('Настройки');
     toggleMenu();
+    
+    const darkMode = document.body.classList.contains('dark-mode');
+    document.getElementById('settingsDarkMode').checked = darkMode;
+    
+    openModal('settingsModal');
+    
+    document.getElementById('settingsDarkMode').addEventListener('change', (e) => {
+        if (e.target.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('darkMode', 'true');
+            document.getElementById('nightModeToggle').checked = true;
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('darkMode', 'false');
+            document.getElementById('nightModeToggle').checked = false;
+        }
+    });
 }
 
 function logout() {
@@ -1089,3 +1113,183 @@ async function addMemberToChat() {
 function saveFolders() {
     localStorage.setItem('folders', JSON.stringify(folders));
 }
+
+// Modal functions
+function openModal(modalId) {
+    document.getElementById(modalId).classList.remove('hidden');
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
+}
+
+window.closeModal = closeModal;
+
+// Close modal on background click
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal')) {
+        e.target.classList.add('hidden');
+    }
+});
+
+// Profile functions
+function changeAvatar() {
+    document.getElementById('avatarInput').click();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const avatarInput = document.getElementById('avatarInput');
+    if (avatarInput) {
+        avatarInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (file.size > 2 * 1024 * 1024) {
+                alert('Файл слишком большой! Максимум 2MB');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                currentUser.avatar = event.target.result;
+                document.getElementById('profileAvatar').src = currentUser.avatar;
+                document.getElementById('menuAvatar').src = currentUser.avatar;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+});
+
+async function saveProfile() {
+    const name = document.getElementById('profileName').value.trim();
+    const bio = document.getElementById('profileBio').value.trim();
+    
+    if (!name) {
+        alert('Введите имя');
+        return;
+    }
+    
+    currentUser.name = name;
+    currentUser.bio = bio;
+    
+    try {
+        await fetch(`/api/users/${currentUser.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentUser)
+        });
+        
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        document.getElementById('menuUsername').textContent = currentUser.name;
+        
+        alert('Профиль обновлен!');
+        closeModal('profileModal');
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        alert('Ошибка обновления профиля');
+    }
+}
+
+window.saveProfile = saveProfile;
+window.changeAvatar = changeAvatar;
+
+// Contacts functions
+function renderContacts() {
+    const contactsList = document.getElementById('contactsList');
+    const searchInput = document.getElementById('contactSearch');
+    
+    searchInput.oninput = () => {
+        const query = searchInput.value.toLowerCase();
+        const filtered = users.filter(u => 
+            u.id !== currentUser.id &&
+            (u.name.toLowerCase().includes(query) || u.username.toLowerCase().includes(query))
+        );
+        displayContacts(filtered);
+    };
+    
+    const allUsers = users.filter(u => u.id !== currentUser.id);
+    displayContacts(allUsers);
+}
+
+function displayContacts(contactsToShow) {
+    const contactsList = document.getElementById('contactsList');
+    contactsList.innerHTML = '';
+    
+    if (contactsToShow.length === 0) {
+        contactsList.innerHTML = '<p style="text-align: center; color: #a2acb4; padding: 20px;">Пользователи не найдены</p>';
+        return;
+    }
+    
+    contactsToShow.forEach(user => {
+        const contactItem = document.createElement('div');
+        contactItem.className = 'contact-item';
+        contactItem.innerHTML = `
+            <img src="${user.avatar}" alt="${user.name}" class="contact-avatar">
+            <div class="contact-info">
+                <div class="contact-name">${user.name}</div>
+                <div class="contact-username">@${user.username}</div>
+            </div>
+        `;
+        contactItem.onclick = () => {
+            closeModal('contactsModal');
+            startChatWithUser(user);
+        };
+        contactsList.appendChild(contactItem);
+    });
+}
+
+// Chat info functions
+function showChatInfo() {
+    if (!currentChatId) return;
+    
+    const chat = chats.find(c => c.id === currentChatId);
+    if (!chat) return;
+    
+    document.getElementById('chatInfoTitle').textContent = chat.type === 'private' ? 'Информация о пользователе' : 'Информация о ' + (chat.type === 'group' ? 'группе' : 'канале');
+    document.getElementById('chatInfoAvatar').src = chat.avatar;
+    document.getElementById('chatInfoName').textContent = chat.name;
+    
+    let statusText = '';
+    if (chat.type === 'group') {
+        statusText = 'Группа';
+    } else if (chat.type === 'channel') {
+        statusText = 'Канал';
+    } else {
+        statusText = 'online';
+    }
+    document.getElementById('chatInfoStatus').textContent = statusText;
+    
+    // Show members
+    const memberCount = chat.participants ? chat.participants.length : 0;
+    document.getElementById('chatInfoMemberCount').textContent = memberCount;
+    
+    const membersList = document.getElementById('chatInfoMembers');
+    membersList.innerHTML = '';
+    
+    if (chat.participants) {
+        chat.participants.forEach(userId => {
+            const user = users.find(u => u.id === userId);
+            if (user) {
+                const memberItem = document.createElement('div');
+                memberItem.className = 'member-item';
+                memberItem.innerHTML = `
+                    <img src="${user.avatar}" alt="${user.name}" class="contact-avatar">
+                    <div class="contact-info">
+                        <div class="contact-name">${user.name}</div>
+                        <div class="contact-username">@${user.username}</div>
+                    </div>
+                `;
+                membersList.appendChild(memberItem);
+            }
+        });
+    }
+    
+    openModal('chatInfoModal');
+}
+
+function showAddMemberDialog() {
+    closeModal('chatInfoModal');
+    addMemberToChat();
+}
+
+window.showAddMemberDialog = showAddMemberDialog;

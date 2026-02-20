@@ -109,11 +109,26 @@ app.post('/api/login', (req, res) => {
                 id: user.id,
                 name: user.name,
                 username: user.username,
-                avatar: user.avatar
+                avatar: user.avatar,
+                bio: user.bio
             }
         });
     } else {
         res.status(401).json({ error: 'Invalid credentials' });
+    }
+});
+
+app.put('/api/users/:id', (req, res) => {
+    const users = db.read('users');
+    const userId = parseInt(req.params.id);
+    const index = users.findIndex(u => u.id === userId);
+    
+    if (index !== -1) {
+        users[index] = { ...users[index], ...req.body };
+        db.write('users', users);
+        res.json({ success: true, user: users[index] });
+    } else {
+        res.status(404).json({ error: 'User not found' });
     }
 });
 

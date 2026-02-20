@@ -1298,3 +1298,316 @@ body.dark-mode .search-section-header {
     background: #17212b;
     color: #3390ec;
 }
+
+/* Modal styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    animation: fadeIn 0.2s ease;
+}
+
+.modal-content {
+    background: #fff;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    font-size: 20px;
+    font-weight: 500;
+    color: #000;
+}
+
+.close-modal {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #707579;
+    cursor: pointer;
+    padding: 4px 8px;
+    transition: color 0.2s;
+}
+
+.close-modal:hover {
+    color: #000;
+}
+
+.modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.modal-input,
+.modal-textarea {
+    width: 100%;
+    padding: 12px 15px;
+    margin-bottom: 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border 0.2s;
+}
+
+.modal-input:focus,
+.modal-textarea:focus {
+    outline: none;
+    border-color: #3390ec;
+}
+
+.modal-textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #707579;
+}
+
+.btn-primary,
+.btn-secondary {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-primary {
+    background: #3390ec;
+    color: #fff;
+    width: 100%;
+}
+
+.btn-primary:hover {
+    background: #2b7cd3;
+}
+
+.btn-secondary {
+    background: #f4f4f5;
+    color: #000;
+    margin-top: 10px;
+}
+
+.btn-secondary:hover {
+    background: #e8e8e8;
+}
+
+/* Profile avatar section */
+.profile-avatar-section,
+.chat-info-avatar-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.profile-avatar-large {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 15px;
+}
+
+.chat-info-avatar-section h3 {
+    margin: 10px 0 5px;
+    font-size: 20px;
+    font-weight: 500;
+}
+
+.chat-info-avatar-section p {
+    color: #707579;
+    font-size: 14px;
+}
+
+/* Settings sections */
+.settings-section {
+    margin-bottom: 30px;
+}
+
+.settings-section h3 {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 15px;
+    color: #3390ec;
+}
+
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #f4f4f5;
+}
+
+.setting-item:last-child {
+    border-bottom: none;
+}
+
+.setting-item span {
+    font-size: 15px;
+    color: #000;
+}
+
+/* Contacts list */
+.contacts-list,
+.members-list {
+    margin-top: 15px;
+}
+
+.contact-item,
+.member-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.contact-item:hover {
+    background: #f4f4f5;
+}
+
+.contact-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.contact-info {
+    flex: 1;
+}
+
+.contact-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: #000;
+    margin-bottom: 2px;
+}
+
+.contact-username {
+    font-size: 13px;
+    color: #707579;
+}
+
+.member-item {
+    cursor: default;
+}
+
+.member-item:hover {
+    background: transparent;
+}
+
+/* Chat info section */
+.chat-info-section {
+    margin: 20px 0;
+}
+
+.chat-info-section h4 {
+    font-size: 15px;
+    font-weight: 500;
+    margin-bottom: 10px;
+    color: #707579;
+}
+
+/* Dark mode for modals */
+body.dark-mode .modal-content {
+    background: #242f3d;
+}
+
+body.dark-mode .modal-header {
+    border-bottom-color: #0f1419;
+}
+
+body.dark-mode .modal-header h2 {
+    color: #fff;
+}
+
+body.dark-mode .close-modal {
+    color: #a2acb4;
+}
+
+body.dark-mode .close-modal:hover {
+    color: #fff;
+}
+
+body.dark-mode .modal-input,
+body.dark-mode .modal-textarea {
+    background: #17212b;
+    border-color: #0f1419;
+    color: #fff;
+}
+
+body.dark-mode .form-group label {
+    color: #a2acb4;
+}
+
+body.dark-mode .btn-secondary {
+    background: #17212b;
+    color: #fff;
+}
+
+body.dark-mode .btn-secondary:hover {
+    background: #1a2633;
+}
+
+body.dark-mode .setting-item {
+    border-bottom-color: #0f1419;
+}
+
+body.dark-mode .setting-item span {
+    color: #fff;
+}
+
+body.dark-mode .contact-item:hover {
+    background: #17212b;
+}
+
+body.dark-mode .contact-name {
+    color: #fff;
+}
+
+body.dark-mode .chat-info-avatar-section p {
+    color: #a2acb4;
+}
+
+body.dark-mode .chat-info-section h4 {
+    color: #a2acb4;
+}
