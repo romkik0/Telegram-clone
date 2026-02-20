@@ -874,22 +874,20 @@ async function sendMessage() {
     renderMessages(currentChatId);
     input.value = '';
     
-    // Send to server
-    try {
-        await fetch(`/api/messages/${currentChatId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(message)
-        });
-    } catch (error) {
-        console.error('Error sending message:', error);
-    }
+    // Send to server (don't wait for response to avoid duplicates)
+    fetch(`/api/messages/${currentChatId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message)
+    }).catch(error => console.error('Error sending message to server:', error));
     
+    // Send via WebSocket to other users
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
             type: 'message',
             chatId: currentChatId,
-            message: message
+            message: message,
+            chat: chat // Send chat info for auto-creation
         }));
     }
 }
@@ -1071,21 +1069,55 @@ function connectWebSocket() {
 
 function handleWebSocketMessage(data) {
     if (data.type === 'message' && data.chatId) {
+        // Check if this is our own message (avoid duplicates)
+        if (data.message.userId === currentUser.id) {
+            console.log('Ignoring own message from WebSocket');
+            return;
+        }
+        
+        // Check if chat exists, if not - create it
+        let chat = chats.find(c => c.id === data.chatId);
+        
+        if (!chat && data.chat) {
+            // Auto-create chat when receiving message
+            console.log('Auto-creating chat from incoming message');
+            chat = data.chat;
+            
+            // Make sure current user is in participants
+            if (!chat.participants.includes(currentUser.id)) {
+                chat.participants.push(currentUser.id);
+            }
+            
+            chats.unshift(chat);
+            
+            // Save to server
+            fetch('/api/chats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(chat)
+            }).catch(error => console.error('Error saving auto-created chat:', error));
+        }
+        
         if (!messages[data.chatId]) {
             messages[data.chatId] = [];
         }
+        
+        // Check if message already exists (avoid duplicates)
+        const exists = messages[data.chatId].find(m => m.id === data.message.id);
+        if (exists) {
+            console.log('Message already exists, skipping');
+            return;
+        }
+        
         messages[data.chatId].push(data.message);
-        saveMessages();
         
         if (currentChatId === data.chatId) {
             renderMessages(data.chatId);
         } else {
-            const chat = chats.find(c => c.id === data.chatId);
             if (chat) {
                 chat.unread = (chat.unread || 0) + 1;
-                chat.lastMessage = data.message.text;
+                chat.lastMessage = data.message.text || '📷 Фото';
                 chat.time = data.message.time;
-                saveChats();
                 renderChats();
             }
         }
@@ -1095,7 +1127,6 @@ function handleWebSocketMessage(data) {
             const message = chatMessages.find(m => m.id === data.messageId);
             if (message) {
                 message.reactions = data.reactions;
-                saveMessages();
                 if (currentChatId === data.chatId) {
                     renderMessages(data.chatId);
                 }

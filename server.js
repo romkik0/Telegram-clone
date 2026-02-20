@@ -199,12 +199,14 @@ app.post('/api/messages/:chatId', (req, res) => {
 const clients = new Set();
 
 wss.on('connection', (ws) => {
-    console.log('New client connected');
+    console.log('✅ New client connected');
     clients.add(ws);
     
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
+            
+            console.log('📨 Received:', data.type, 'for chat:', data.chatId);
             
             // Save to database
             if (data.type === 'message' && data.chatId) {
@@ -212,8 +214,16 @@ wss.on('connection', (ws) => {
                 if (!messages[data.chatId]) {
                     messages[data.chatId] = [];
                 }
-                messages[data.chatId].push(data.message);
-                db.write('messages', messages);
+                
+                // Check if message already exists (avoid duplicates)
+                const exists = messages[data.chatId].find(m => m.id === data.message.id);
+                if (!exists) {
+                    messages[data.chatId].push(data.message);
+                    db.write('messages', messages);
+                    console.log('💾 Message saved to DB');
+                } else {
+                    console.log('⚠️ Message already in DB, skipping');
+                }
                 
                 // Update chat last message
                 const chats = db.read('chats');
@@ -230,28 +240,33 @@ wss.on('connection', (ws) => {
                     if (msgIndex !== -1) {
                         messages[data.chatId][msgIndex].reactions = data.reactions;
                         db.write('messages', messages);
+                        console.log('💾 Reaction saved to DB');
                     }
                 }
             }
             
-            // Broadcast to all clients
+            // Broadcast to all OTHER clients (not sender)
+            let broadcastCount = 0;
             clients.forEach(client => {
                 if (client !== ws && client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify(data));
+                    broadcastCount++;
                 }
             });
+            console.log('📤 Broadcasted to', broadcastCount, 'clients');
+            
         } catch (error) {
-            console.error('Error processing message:', error);
+            console.error('❌ Error processing message:', error);
         }
     });
     
     ws.on('close', () => {
-        console.log('Client disconnected');
+        console.log('❌ Client disconnected');
         clients.delete(ws);
     });
     
     ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
+        console.error('❌ WebSocket error:', error);
     });
 });
 
