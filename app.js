@@ -38,20 +38,34 @@ async function loadDataFromServer() {
     try {
         // Load users
         const usersRes = await fetch('/api/users');
-        users = await usersRes.json();
+        if (usersRes.ok) {
+            users = await usersRes.json();
+            console.log('Loaded users:', users.length);
+        }
         
         // Load chats
         const chatsRes = await fetch('/api/chats');
-        chats = await chatsRes.json();
+        if (chatsRes.ok) {
+            chats = await chatsRes.json();
+            console.log('Loaded chats:', chats.length);
+        }
         
         // Load messages for current chats
         messages = {};
         for (const chat of chats) {
             const messagesRes = await fetch(`/api/messages/${chat.id}`);
-            messages[chat.id] = await messagesRes.json();
+            if (messagesRes.ok) {
+                messages[chat.id] = await messagesRes.json();
+            }
         }
+        
+        console.log('Data loaded successfully');
     } catch (error) {
         console.error('Error loading data:', error);
+        // If server fails, try to use localStorage as fallback
+        users = JSON.parse(localStorage.getItem('users_backup')) || [];
+        chats = JSON.parse(localStorage.getItem('chats_backup')) || [];
+        messages = JSON.parse(localStorage.getItem('messages_backup')) || {};
     }
 }
 
@@ -170,6 +184,7 @@ async function register() {
         username: username,
         password: hashedPassword,
         avatar: generateAvatar(name),
+        bio: '',
         createdAt: new Date().toISOString()
     };
     
@@ -183,6 +198,7 @@ async function register() {
         const data = await response.json();
         
         if (data.success) {
+            console.log('User registered:', newUser.username);
             alert('Регистрация успешна! Войдите в систему');
             document.getElementById('loginTab').click();
             document.getElementById('loginUsername').value = username;
@@ -191,7 +207,7 @@ async function register() {
         }
     } catch (error) {
         console.error('Registration error:', error);
-        alert('Ошибка регистрации');
+        alert('Ошибка регистрации. Попробуйте еще раз.');
     }
 }
 
@@ -213,6 +229,13 @@ function initializeApp() {
     renderChats();
     connectWebSocket();
     setupAppEventListeners();
+    
+    // Backup data to localStorage
+    localStorage.setItem('users_backup', JSON.stringify(users));
+    localStorage.setItem('chats_backup', JSON.stringify(chats));
+    localStorage.setItem('messages_backup', JSON.stringify(messages));
+    
+    console.log('App initialized with', users.length, 'users and', chats.length, 'chats');
 }
 
 function setupAppEventListeners() {
@@ -227,7 +250,10 @@ function setupAppEventListeners() {
     document.getElementById('settings').addEventListener('click', showSettings);
     document.getElementById('logoutBtn').addEventListener('click', logout);
     
-    document.getElementById('chatInfoBtn').addEventListener('click', showChatInfo);
+    const chatInfoBtn = document.getElementById('chatInfoBtn');
+    if (chatInfoBtn) {
+        chatInfoBtn.addEventListener('click', showChatInfo);
+    }
     
     document.getElementById('nightModeToggle').addEventListener('change', toggleNightMode);
     document.getElementById('themeToggle').addEventListener('click', () => {
@@ -249,10 +275,38 @@ function setupAppEventListeners() {
     document.getElementById('photoInput').addEventListener('change', handlePhotoUpload);
     
     // Folders
-    document.getElementById('createFolder').addEventListener('click', createFolder);
+    const createFolderBtn = document.getElementById('createFolder');
+    if (createFolderBtn) {
+        createFolderBtn.addEventListener('click', createFolder);
+    }
     
     // Chat management
-    document.getElementById('addMemberBtn').addEventListener('click', addMemberToChat);
+    const addMemberBtn = document.getElementById('addMemberBtn');
+    if (addMemberBtn) {
+        addMemberBtn.addEventListener('click', addMemberToChat);
+    }
+    
+    // Avatar input
+    const avatarInput = document.getElementById('avatarInput');
+    if (avatarInput) {
+        avatarInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (file.size > 2 * 1024 * 1024) {
+                alert('Файл слишком большой! Максимум 2MB');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                currentUser.avatar = event.target.result;
+                document.getElementById('profileAvatar').src = currentUser.avatar;
+                document.getElementById('menuAvatar').src = currentUser.avatar;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
 }
 
 function updateMenuProfile() {
@@ -282,92 +336,105 @@ function searchUsers() {
         return;
     }
     
-    // Search in existing chats first
-    const matchingChats = chats.filter(c => 
-        c.name.toLowerCase().includes(query)
-    );
-    
-    // Search for users not in chats
-    const results = users.filter(u => 
-        u.id !== currentUser.id && 
-        (u.name.toLowerCase().includes(query) || u.username.toLowerCase().includes(query))
-    );
-    
-    const chatList = document.getElementById('chatList');
-    chatList.innerHTML = '';
-    
-    // Show matching chats first
-    if (matchingChats.length > 0) {
-        const chatsHeader = document.createElement('div');
-        chatsHeader.className = 'search-section-header';
-        chatsHeader.textContent = 'Чаты и группы';
-        chatList.appendChild(chatsHeader);
-        
-        matchingChats.forEach(chat => {
-            const chatItem = document.createElement('div');
-            chatItem.className = 'chat-item';
-            chatItem.dataset.chatId = chat.id;
+    // Reload users from server for search
+    fetch('/api/users')
+        .then(res => res.json())
+        .then(data => {
+            users = data;
+            console.log('Search: loaded', users.length, 'users');
             
-            if (currentChatId === chat.id) {
-                chatItem.classList.add('active');
+            // Search in existing chats first
+            const matchingChats = chats.filter(c => 
+                c.name.toLowerCase().includes(query)
+            );
+            
+            // Search for users not in chats
+            const results = users.filter(u => 
+                u.id !== currentUser.id && 
+                (u.name.toLowerCase().includes(query) || u.username.toLowerCase().includes(query))
+            );
+            
+            const chatList = document.getElementById('chatList');
+            chatList.innerHTML = '';
+            
+            // Show matching chats first
+            if (matchingChats.length > 0) {
+                const chatsHeader = document.createElement('div');
+                chatsHeader.className = 'search-section-header';
+                chatsHeader.textContent = 'Чаты и группы';
+                chatList.appendChild(chatsHeader);
+                
+                matchingChats.forEach(chat => {
+                    const chatItem = document.createElement('div');
+                    chatItem.className = 'chat-item';
+                    chatItem.dataset.chatId = chat.id;
+                    
+                    if (currentChatId === chat.id) {
+                        chatItem.classList.add('active');
+                    }
+                    
+                    chatItem.innerHTML = `
+                        <img src="${chat.avatar}" alt="${chat.name}" class="chat-item-avatar">
+                        <div class="chat-item-content">
+                            <div class="chat-item-header">
+                                <span class="chat-item-name">${chat.name}</span>
+                                <span class="chat-item-time">${chat.time}</span>
+                            </div>
+                            <div class="chat-item-message">${chat.lastMessage || 'Нет сообщений'}</div>
+                        </div>
+                    `;
+                    chatItem.addEventListener('click', () => {
+                        document.getElementById('searchInput').value = '';
+                        openChat(chat.id);
+                    });
+                    chatList.appendChild(chatItem);
+                });
             }
             
-            chatItem.innerHTML = `
-                <img src="${chat.avatar}" alt="${chat.name}" class="chat-item-avatar">
-                <div class="chat-item-content">
-                    <div class="chat-item-header">
-                        <span class="chat-item-name">${chat.name}</span>
-                        <span class="chat-item-time">${chat.time}</span>
+            // Show users
+            if (results.length > 0) {
+                const usersHeader = document.createElement('div');
+                usersHeader.className = 'search-section-header';
+                usersHeader.textContent = 'Пользователи';
+                chatList.appendChild(usersHeader);
+                
+                results.forEach(user => {
+                    const chatItem = document.createElement('div');
+                    chatItem.className = 'chat-item';
+                    chatItem.innerHTML = `
+                        <img src="${user.avatar}" alt="${user.name}" class="chat-item-avatar">
+                        <div class="chat-item-content">
+                            <div class="chat-item-header">
+                                <span class="chat-item-name">${user.name}</span>
+                            </div>
+                            <div class="chat-item-message">@${user.username}</div>
+                        </div>
+                    `;
+                    chatItem.addEventListener('click', () => {
+                        document.getElementById('searchInput').value = '';
+                        startChatWithUser(user);
+                    });
+                    chatList.appendChild(chatItem);
+                });
+            }
+            
+            if (matchingChats.length === 0 && results.length === 0) {
+                chatList.innerHTML = `
+                    <div class="empty-state">
+                        <svg width="80" height="80" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
+                            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                        </svg>
+                        <h3>Ничего не найдено</h3>
+                        <p>Попробуйте другой запрос</p>
                     </div>
-                    <div class="chat-item-message">${chat.lastMessage || 'Нет сообщений'}</div>
-                </div>
-            `;
-            chatItem.addEventListener('click', () => {
-                document.getElementById('searchInput').value = '';
-                openChat(chat.id);
-            });
-            chatList.appendChild(chatItem);
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Search error:', error);
+            const chatList = document.getElementById('chatList');
+            chatList.innerHTML = '<div class="empty-state"><h3>Ошибка поиска</h3><p>Попробуйте еще раз</p></div>';
         });
-    }
-    
-    // Show users
-    if (results.length > 0) {
-        const usersHeader = document.createElement('div');
-        usersHeader.className = 'search-section-header';
-        usersHeader.textContent = 'Пользователи';
-        chatList.appendChild(usersHeader);
-        
-        results.forEach(user => {
-            const chatItem = document.createElement('div');
-            chatItem.className = 'chat-item';
-            chatItem.innerHTML = `
-                <img src="${user.avatar}" alt="${user.name}" class="chat-item-avatar">
-                <div class="chat-item-content">
-                    <div class="chat-item-header">
-                        <span class="chat-item-name">${user.name}</span>
-                    </div>
-                    <div class="chat-item-message">@${user.username}</div>
-                </div>
-            `;
-            chatItem.addEventListener('click', () => {
-                document.getElementById('searchInput').value = '';
-                startChatWithUser(user);
-            });
-            chatList.appendChild(chatItem);
-        });
-    }
-    
-    if (matchingChats.length === 0 && results.length === 0) {
-        chatList.innerHTML = `
-            <div class="empty-state">
-                <svg width="80" height="80" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
-                    <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-                </svg>
-                <h3>Ничего не найдено</h3>
-                <p>Попробуйте другой запрос</p>
-            </div>
-        `;
-    }
 }
 
 async function startChatWithUser(user) {
@@ -1198,17 +1265,29 @@ function renderContacts() {
     const contactsList = document.getElementById('contactsList');
     const searchInput = document.getElementById('contactSearch');
     
-    searchInput.oninput = () => {
-        const query = searchInput.value.toLowerCase();
-        const filtered = users.filter(u => 
-            u.id !== currentUser.id &&
-            (u.name.toLowerCase().includes(query) || u.username.toLowerCase().includes(query))
-        );
-        displayContacts(filtered);
-    };
-    
-    const allUsers = users.filter(u => u.id !== currentUser.id);
-    displayContacts(allUsers);
+    // Reload users from server
+    fetch('/api/users')
+        .then(res => res.json())
+        .then(data => {
+            users = data;
+            console.log('Contacts loaded:', users.length);
+            
+            searchInput.oninput = () => {
+                const query = searchInput.value.toLowerCase();
+                const filtered = users.filter(u => 
+                    u.id !== currentUser.id &&
+                    (u.name.toLowerCase().includes(query) || u.username.toLowerCase().includes(query))
+                );
+                displayContacts(filtered);
+            };
+            
+            const allUsers = users.filter(u => u.id !== currentUser.id);
+            displayContacts(allUsers);
+        })
+        .catch(error => {
+            console.error('Error loading contacts:', error);
+            contactsList.innerHTML = '<p style="text-align: center; color: #e53935; padding: 20px;">Ошибка загрузки контактов</p>';
+        });
 }
 
 function displayContacts(contactsToShow) {
