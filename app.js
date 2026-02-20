@@ -9,9 +9,9 @@ async function hashPassword(password) {
 
 // State
 let currentUser = null;
-let users = JSON.parse(localStorage.getItem('users')) || [];
-let chats = JSON.parse(localStorage.getItem('chats')) || [];
-let messages = JSON.parse(localStorage.getItem('messages')) || {};
+let users = [];
+let chats = [];
+let messages = {};
 let currentChatId = null;
 let ws = null;
 let folders = JSON.parse(localStorage.getItem('folders')) || [];
@@ -23,13 +23,35 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
 });
 
-function checkAuth() {
+async function checkAuth() {
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
         currentUser = JSON.parse(savedUser);
+        await loadDataFromServer();
         showApp();
     } else {
         showAuth();
+    }
+}
+
+async function loadDataFromServer() {
+    try {
+        // Load users
+        const usersRes = await fetch('/api/users');
+        users = await usersRes.json();
+        
+        // Load chats
+        const chatsRes = await fetch('/api/chats');
+        chats = await chatsRes.json();
+        
+        // Load messages for current chats
+        messages = {};
+        for (const chat of chats) {
+            const messagesRes = await fetch(`/api/messages/${chat.id}`);
+            messages[chat.id] = await messagesRes.json();
+        }
+    } catch (error) {
+        console.error('Error loading data:', error);
     }
 }
 
@@ -84,19 +106,27 @@ async function login() {
     }
     
     const hashedPassword = await hashPassword(password);
-    const user = users.find(u => u.username === username && u.password === hashedPassword);
     
-    if (user) {
-        currentUser = {
-            id: user.id,
-            name: user.name,
-            username: user.username,
-            avatar: user.avatar
-        };
-        localStorage.setItem('currentUser', JSON.stringify(currentUser));
-        showApp();
-    } else {
-        alert('Неверный логин или пароль');
+    try {
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password: hashedPassword })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            currentUser = data.user;
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            await loadDataFromServer();
+            showApp();
+        } else {
+            alert('Неверный логин или пароль');
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        alert('Ошибка входа');
     }
 }
 
@@ -132,11 +162,6 @@ async function register() {
         return;
     }
     
-    if (users.find(u => u.username === username)) {
-        alert('Пользователь с таким логином уже существует');
-        return;
-    }
-    
     const hashedPassword = await hashPassword(password);
     
     const newUser = {
@@ -148,13 +173,26 @@ async function register() {
         createdAt: new Date().toISOString()
     };
     
-    users.push(newUser);
-    localStorage.setItem('users', JSON.stringify(users));
-    
-    alert('Регистрация успешна! Войдите в систему');
-    
-    document.getElementById('loginTab').click();
-    document.getElementById('loginUsername').value = username;
+    try {
+        const response = await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newUser)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('Регистрация успешна! Войдите в систему');
+            document.getElementById('loginTab').click();
+            document.getElementById('loginUsername').value = username;
+        } else {
+            alert(data.error || 'Ошибка регистрации');
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        alert('Ошибка регистрации');
+    }
 }
 
 function generateAvatar(name) {
@@ -330,7 +368,7 @@ function searchUsers() {
     }
 }
 
-function startChatWithUser(user) {
+async function startChatWithUser(user) {
     let chat = chats.find(c => 
         c.type === 'private' && 
         c.participants && 
@@ -351,7 +389,16 @@ function startChatWithUser(user) {
             createdAt: new Date().toISOString()
         };
         chats.unshift(chat);
-        saveChats();
+        
+        try {
+            await fetch('/api/chats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(chat)
+            });
+        } catch (error) {
+            console.error('Error creating chat:', error);
+        }
     }
     
     document.getElementById('searchInput').value = '';
@@ -588,7 +635,7 @@ window.showReactionPicker = function(messageId) {
     }, 10);
 };
 
-window.addReaction = function(messageId, emoji) {
+window.addReaction = async function(messageId, emoji) {
     if (!currentChatId) return;
     
     const chatMessages = messages[currentChatId];
@@ -614,7 +661,6 @@ window.addReaction = function(messageId, emoji) {
         message.reactions[emoji].push(currentUser.id);
     }
     
-    saveMessages();
     renderMessages(currentChatId);
     
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -645,7 +691,7 @@ function cancelReply() {
     document.getElementById('replyPreview').classList.add('hidden');
 }
 
-function sendMessage() {
+async function sendMessage() {
     const input = document.getElementById('messageInput');
     const text = input.value.trim();
     
@@ -674,18 +720,27 @@ function sendMessage() {
     }
     
     messages[currentChatId].push(message);
-    saveMessages();
     
     const chat = chats.find(c => c.id === currentChatId);
     if (chat) {
         chat.lastMessage = text;
         chat.time = time;
-        saveChats();
         renderChats();
     }
     
     renderMessages(currentChatId);
     input.value = '';
+    
+    // Send to server
+    try {
+        await fetch(`/api/messages/${currentChatId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(message)
+        });
+    } catch (error) {
+        console.error('Error sending message:', error);
+    }
     
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
@@ -696,7 +751,7 @@ function sendMessage() {
     }
 }
 
-function createGroup() {
+async function createGroup() {
     const name = prompt('Название группы:');
     if (!name) return;
     
@@ -713,12 +768,22 @@ function createGroup() {
     };
     
     chats.unshift(group);
-    saveChats();
+    
+    try {
+        await fetch('/api/chats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(group)
+        });
+    } catch (error) {
+        console.error('Error creating group:', error);
+    }
+    
     renderChats();
     toggleMenu();
 }
 
-function createChannel() {
+async function createChannel() {
     const name = prompt('Название канала:');
     if (!name) return;
     
@@ -735,7 +800,17 @@ function createChannel() {
     };
     
     chats.unshift(channel);
-    saveChats();
+    
+    try {
+        await fetch('/api/chats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(channel)
+        });
+    } catch (error) {
+        console.error('Error creating channel:', error);
+    }
+    
     renderChats();
     toggleMenu();
 }
@@ -766,16 +841,20 @@ function logout() {
         localStorage.removeItem('currentUser');
         currentUser = null;
         currentChatId = null;
+        users = [];
+        chats = [];
+        messages = {};
         showAuth();
     }
 }
 
-function saveChats() {
-    localStorage.setItem('chats', JSON.stringify(chats));
+// Remove old localStorage save functions - now using server
+async function saveChats() {
+    // Data is saved on server automatically
 }
 
-function saveMessages() {
-    localStorage.setItem('messages', JSON.stringify(messages));
+async function saveMessages() {
+    // Data is saved on server automatically
 }
 
 function escapeHtml(text) {
@@ -854,7 +933,7 @@ if (localStorage.getItem('darkMode') === 'true') {
 }
 
 
-function handlePhotoUpload(e) {
+async function handlePhotoUpload(e) {
     const file = e.target.files[0];
     if (!file || !currentChatId) return;
     
@@ -864,7 +943,7 @@ function handlePhotoUpload(e) {
     }
     
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
         const now = new Date();
         const time = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
         
@@ -889,17 +968,25 @@ function handlePhotoUpload(e) {
         }
         
         messages[currentChatId].push(message);
-        saveMessages();
         
         const chat = chats.find(c => c.id === currentChatId);
         if (chat) {
             chat.lastMessage = '📷 Фото';
             chat.time = time;
-            saveChats();
             renderChats();
         }
         
         renderMessages(currentChatId);
+        
+        try {
+            await fetch(`/api/messages/${currentChatId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(message)
+            });
+        } catch (error) {
+            console.error('Error sending photo:', error);
+        }
         
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
@@ -929,7 +1016,7 @@ function createFolder() {
     toggleMenu();
 }
 
-function addMemberToChat() {
+async function addMemberToChat() {
     if (!currentChatId) {
         alert('Выберите чат');
         return;
@@ -958,7 +1045,16 @@ function addMemberToChat() {
     }
     
     chat.participants.push(user.id);
-    saveChats();
+    
+    try {
+        await fetch(`/api/chats/${chat.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chat)
+        });
+    } catch (error) {
+        console.error('Error updating chat:', error);
+    }
     
     const systemMessage = {
         id: Date.now(),
@@ -974,7 +1070,17 @@ function addMemberToChat() {
         messages[currentChatId] = [];
     }
     messages[currentChatId].push(systemMessage);
-    saveMessages();
+    
+    try {
+        await fetch(`/api/messages/${currentChatId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(systemMessage)
+        });
+    } catch (error) {
+        console.error('Error sending system message:', error);
+    }
+    
     renderMessages(currentChatId);
     
     alert(`${user.name} добавлен в чат`);
