@@ -1,0 +1,11 @@
+ВЫПОЛНИТЕ ЭТИ КОМАНДЫ В CMD:
+
+cd D:\хм
+
+git add package.json
+
+git commit -m "Fix package.json"
+
+git push
+
+ГОТОВО! Railway автоматически перезапустит деплой!
