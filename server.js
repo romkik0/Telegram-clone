@@ -65,12 +65,14 @@ app.get('/', (req, res) => {
 // API endpoints
 app.get('/api/users', (req, res) => {
     const users = db.read('users');
+    console.log('📋 GET /api/users - returning', users.length, 'users');
     // Don't send passwords to client
     const safeUsers = users.map(u => ({
         id: u.id,
         name: u.name,
         username: u.username,
         avatar: u.avatar,
+        bio: u.bio,
         createdAt: u.createdAt
     }));
     res.json(safeUsers);
@@ -80,13 +82,24 @@ app.post('/api/users', (req, res) => {
     const users = db.read('users');
     const newUser = req.body;
     
+    console.log('📝 Registering new user:', newUser.username);
+    console.log('📊 Current users count:', users.length);
+    
     // Check if username exists
     if (users.find(u => u.username === newUser.username)) {
+        console.log('❌ Username already exists:', newUser.username);
         return res.status(400).json({ error: 'Username already exists' });
     }
     
     users.push(newUser);
-    db.write('users', users);
+    const saved = db.write('users', users);
+    
+    if (saved) {
+        console.log('✅ User registered successfully:', newUser.username);
+        console.log('📊 Total users now:', users.length);
+    } else {
+        console.log('❌ Failed to save user');
+    }
     
     res.json({ success: true, user: {
         id: newUser.id,
@@ -243,7 +256,14 @@ wss.on('connection', (ws) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Database directory: ${DB_DIR}`);
-    console.log(`Open http://localhost:${PORT} in your browser`);
+    console.log('=================================');
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📁 Database directory: ${DB_DIR}`);
+    console.log(`🌐 Open http://localhost:${PORT} in your browser`);
+    console.log('=================================');
+    
+    // Log initial data
+    const users = db.read('users');
+    const chats = db.read('chats');
+    console.log(`📊 Initial data: ${users.length} users, ${chats.length} chats`);
 });
