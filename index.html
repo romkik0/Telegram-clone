@@ -35,7 +35,7 @@
             <div class="auth-form hidden" id="registerForm">
                 <h2>Регистрация</h2>
                 <input type="text" id="regName" placeholder="Имя" class="auth-input">
-                <input type="text" id="regUsername" placeholder="Логин" class="auth-input">
+                <input type="text" id="regUsername" placeholder="Username (англ, макс 6)" class="auth-input" maxlength="6">
                 <input type="password" id="regPassword" placeholder="Пароль" class="auth-input">
                 <input type="password" id="regPasswordConfirm" placeholder="Подтвердите пароль" class="auth-input">
                 <button class="auth-btn" id="registerBtn">Зарегистрироваться</button>
@@ -241,8 +241,8 @@
                     <input type="text" id="profileName" class="modal-input">
                 </div>
                 <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" id="profileUsername" class="modal-input" disabled>
+                    <label>Username (только англ буквы и цифры, макс 6)</label>
+                    <input type="text" id="profileUsername" class="modal-input" maxlength="6">
                 </div>
                 <div class="form-group">
                     <label>О себе</label>

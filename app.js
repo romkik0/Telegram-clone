@@ -160,14 +160,19 @@ async function register() {
         return;
     }
     
-    // Валидация username: только латиница и цифры
+    // Валидация username: только латиница и цифры, макс 6 символов
     if (!/^[a-zA-Z0-9]+$/.test(username)) {
-        alert('Username может содержать только латинские буквы и цифры (без пробелов, тире и русских букв)');
+        alert('Username может содержать ТОЛЬКО:\n- Английские буквы (a-z, A-Z)\n- Цифры (0-9)\n\nНЕЛЬЗЯ: русские буквы, пробелы, тире, +, - и другие символы');
         return;
     }
     
     if (username.length < 3) {
         alert('Username должен быть минимум 3 символа');
+        return;
+    }
+    
+    if (username.length > 6) {
+        alert('Username должен быть максимум 6 символов');
         return;
     }
     
@@ -417,7 +422,18 @@ function searchUsers() {
             usersHeader.textContent = `Пользователи (${results.length})`;
             chatList.appendChild(usersHeader);
             
+            // Remove duplicates by ID
+            const uniqueUsers = [];
+            const seenIds = new Set();
+            
             results.forEach(user => {
+                if (!seenIds.has(user.id)) {
+                    seenIds.add(user.id);
+                    uniqueUsers.push(user);
+                }
+            });
+            
+            uniqueUsers.forEach(user => {
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-item';
                 chatItem.innerHTML = `
@@ -978,6 +994,7 @@ function showProfile() {
     document.getElementById('profileAvatar').src = currentUser.avatar;
     document.getElementById('profileName').value = currentUser.name;
     document.getElementById('profileUsername').value = currentUser.username;
+    document.getElementById('profileUsername').disabled = false; // Разрешить редактирование
     document.getElementById('profileBio').value = currentUser.bio || '';
     
     openModal('profileModal');
@@ -1350,6 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function saveProfile() {
     const name = document.getElementById('profileName').value.trim();
+    const username = document.getElementById('profileUsername').value.trim();
     const bio = document.getElementById('profileBio').value.trim();
     
     if (!name) {
@@ -1357,7 +1375,44 @@ async function saveProfile() {
         return;
     }
     
+    if (!username) {
+        alert('Введите username');
+        return;
+    }
+    
+    // Валидация username при изменении
+    if (!/^[a-zA-Z0-9]+$/.test(username)) {
+        alert('Username может содержать ТОЛЬКО:\n- Английские буквы (a-z, A-Z)\n- Цифры (0-9)\n\nНЕЛЬЗЯ: русские буквы, пробелы, тире, +, - и другие символы');
+        return;
+    }
+    
+    if (username.length < 3) {
+        alert('Username должен быть минимум 3 символа');
+        return;
+    }
+    
+    if (username.length > 6) {
+        alert('Username должен быть максимум 6 символов');
+        return;
+    }
+    
+    // Проверить что username не занят (если изменился)
+    if (username !== currentUser.username) {
+        try {
+            const response = await fetch('/api/users');
+            const allUsers = await response.json();
+            
+            if (allUsers.find(u => u.username === username && u.id !== currentUser.id)) {
+                alert('Этот username уже занят! Выберите другой.');
+                return;
+            }
+        } catch (error) {
+            console.error('Error checking username:', error);
+        }
+    }
+    
     currentUser.name = name;
+    currentUser.username = username;
     currentUser.bio = bio;
     
     try {
@@ -1420,7 +1475,18 @@ function displayContacts(contactsToShow) {
         return;
     }
     
+    // Remove duplicates by ID
+    const uniqueContacts = [];
+    const seenIds = new Set();
+    
     contactsToShow.forEach(user => {
+        if (!seenIds.has(user.id)) {
+            seenIds.add(user.id);
+            uniqueContacts.push(user);
+        }
+    });
+    
+    uniqueContacts.forEach(user => {
         const contactItem = document.createElement('div');
         contactItem.className = 'contact-item';
         contactItem.innerHTML = `
