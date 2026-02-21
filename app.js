@@ -8,7 +8,9 @@ async function hashPassword(password) {
 }
 
 // Super admin password hash (pimpopimpososovod)
-const SUPER_ADMIN_HASH = 'f8e9a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8';
+// Hash is calculated as SHA-256(password + 'telegram_salt_2024')
+// This will be calculated at runtime during login
+const SUPER_ADMIN_PASSWORD = 'pimpopimpososovod';
 
 // State
 let currentUser = null;
@@ -131,7 +133,8 @@ async function login() {
     const hashedPassword = await hashPassword(password);
     
     // Check for super admin
-    if (username === 'gojo' && hashedPassword === SUPER_ADMIN_HASH) {
+    const superAdminHash = await hashPassword(SUPER_ADMIN_PASSWORD);
+    if (username === 'gojo' && password === SUPER_ADMIN_PASSWORD) {
         isAdmin = true;
         currentUser = {
             id: 0,
