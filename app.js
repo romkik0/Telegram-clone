@@ -909,8 +909,20 @@ async function sendMessage() {
 }
 
 async function createGroup() {
-    const name = prompt('Название группы:');
-    if (!name) return;
+    toggleMenu();
+    openModal('createGroupModal');
+    document.getElementById('groupName').value = '';
+    document.getElementById('groupDescription').value = '';
+}
+
+async function createGroupConfirm() {
+    const name = document.getElementById('groupName').value.trim();
+    const description = document.getElementById('groupDescription').value.trim();
+    
+    if (!name) {
+        alert('Введите название группы');
+        return;
+    }
     
     const group = {
         id: Date.now(),
@@ -919,7 +931,7 @@ async function createGroup() {
         avatar: generateAvatar(name),
         participants: [currentUser.id],
         admins: [currentUser.id],
-        description: '',
+        description: description,
         lastMessage: 'Группа создана',
         time: 'now',
         unread: 0,
@@ -937,20 +949,31 @@ async function createGroup() {
         
         if (response.ok) {
             console.log('Group created:', group.name);
-            alert('Группа создана!');
+            closeModal('createGroupModal');
+            renderChats();
+            openChat(group.id);
         }
     } catch (error) {
         console.error('Error creating group:', error);
         alert('Ошибка создания группы');
     }
-    
-    renderChats();
-    toggleMenu();
 }
 
 async function createChannel() {
-    const name = prompt('Название канала:');
-    if (!name) return;
+    toggleMenu();
+    openModal('createChannelModal');
+    document.getElementById('channelName').value = '';
+    document.getElementById('channelDescription').value = '';
+}
+
+async function createChannelConfirm() {
+    const name = document.getElementById('channelName').value.trim();
+    const description = document.getElementById('channelDescription').value.trim();
+    
+    if (!name) {
+        alert('Введите название канала');
+        return;
+    }
     
     const channel = {
         id: Date.now(),
@@ -959,7 +982,7 @@ async function createChannel() {
         avatar: generateAvatar(name),
         participants: [currentUser.id],
         admins: [currentUser.id],
-        description: '',
+        description: description,
         lastMessage: 'Канал создан',
         time: 'now',
         unread: 0,
@@ -977,16 +1000,18 @@ async function createChannel() {
         
         if (response.ok) {
             console.log('Channel created:', channel.name);
-            alert('Канал создан!');
+            closeModal('createChannelModal');
+            renderChats();
+            openChat(channel.id);
         }
     } catch (error) {
         console.error('Error creating channel:', error);
         alert('Ошибка создания канала');
     }
-    
-    renderChats();
-    toggleMenu();
 }
+
+window.createGroupConfirm = createGroupConfirm;
+window.createChannelConfirm = createChannelConfirm;
 
 function showProfile() {
     toggleMenu();
@@ -1572,10 +1597,30 @@ function showChatInfo() {
 }
 
 async function editChatSettings(chat) {
-    const newName = prompt('Название:', chat.name);
-    if (!newName || newName === chat.name) return;
+    closeModal('chatInfoModal');
+    openModal('editChatModal');
+    
+    document.getElementById('editChatName').value = chat.name;
+    document.getElementById('editChatDescription').value = chat.description || '';
+    
+    // Store current chat ID for saving
+    window.editingChatId = chat.id;
+}
+
+async function saveEditChat() {
+    const chat = chats.find(c => c.id === window.editingChatId);
+    if (!chat) return;
+    
+    const newName = document.getElementById('editChatName').value.trim();
+    const newDescription = document.getElementById('editChatDescription').value.trim();
+    
+    if (!newName) {
+        alert('Введите название');
+        return;
+    }
     
     chat.name = newName;
+    chat.description = newDescription;
     
     try {
         await fetch(`/api/chats/${chat.id}`, {
@@ -1585,10 +1630,10 @@ async function editChatSettings(chat) {
         });
         
         // Update UI
-        document.getElementById('chatInfoName').textContent = newName;
         document.getElementById('chatName').textContent = newName;
         renderChats();
         
+        closeModal('editChatModal');
         alert('Настройки обновлены!');
     } catch (error) {
         console.error('Error updating chat:', error);
@@ -1596,10 +1641,122 @@ async function editChatSettings(chat) {
     }
 }
 
+async function deleteChat() {
+    if (!confirm('Удалить этот чат? Это действие нельзя отменить.')) return;
+    
+    const chatId = window.editingChatId;
+    const chatIndex = chats.findIndex(c => c.id === chatId);
+    
+    if (chatIndex !== -1) {
+        chats.splice(chatIndex, 1);
+        
+        try {
+            // In a real app, you'd have a DELETE endpoint
+            // For now, just update local state
+            closeModal('editChatModal');
+            currentChatId = null;
+            renderChats();
+            
+            document.getElementById('chatName').textContent = 'Select a chat to start messaging';
+            document.getElementById('messagesContainer').innerHTML = `
+                <div class="welcome-screen">
+                    <h2>Select a chat to start messaging</h2>
+                </div>
+            `;
+            
+            alert('Чат удален');
+        } catch (error) {
+            console.error('Error deleting chat:', error);
+            alert('Ошибка удаления');
+        }
+    }
+}
+
+window.saveEditChat = saveEditChat;
+window.deleteChat = deleteChat;
+
 function showAddMemberDialog() {
     closeModal('chatInfoModal');
-    addMemberToChat();
+    openModal('addMemberModal');
+    
+    document.getElementById('addMemberSearch').value = '';
+    document.getElementById('addMemberResults').innerHTML = '';
+    
+    // Load all users
+    fetch('/api/users')
+        .then(res => res.json())
+        .then(allUsers => {
+            const chat = chats.find(c => c.id === currentChatId);
+            if (!chat) return;
+            
+            // Filter out users already in chat
+            const availableUsers = allUsers.filter(u => 
+                u.id !== currentUser.id && 
+                (!chat.participants || !chat.participants.includes(u.id))
+            );
+            
+            displayAddMemberResults(availableUsers);
+            
+            // Setup search
+            document.getElementById('addMemberSearch').oninput = (e) => {
+                const query = e.target.value.toLowerCase();
+                const filtered = availableUsers.filter(u =>
+                    u.name.toLowerCase().includes(query) ||
+                    u.username.toLowerCase().includes(query)
+                );
+                displayAddMemberResults(filtered);
+            };
+        });
 }
+
+function displayAddMemberResults(users) {
+    const results = document.getElementById('addMemberResults');
+    results.innerHTML = '';
+    
+    if (users.length === 0) {
+        results.innerHTML = '<p style="text-align: center; color: #a2acb4; padding: 20px;">Нет доступных пользователей</p>';
+        return;
+    }
+    
+    users.forEach(user => {
+        const userItem = document.createElement('div');
+        userItem.className = 'contact-item';
+        userItem.innerHTML = `
+            <img src="${user.avatar}" alt="${user.name}" class="contact-avatar">
+            <div class="contact-info">
+                <div class="contact-name">${user.name}</div>
+                <div class="contact-username">@${user.username}</div>
+            </div>
+        `;
+        userItem.onclick = () => addMemberConfirm(user);
+        results.appendChild(userItem);
+    });
+}
+
+async function addMemberConfirm(user) {
+    const chat = chats.find(c => c.id === currentChatId);
+    if (!chat) return;
+    
+    if (!chat.participants) chat.participants = [];
+    chat.participants.push(user.id);
+    
+    try {
+        await fetch(`/api/chats/${chat.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chat)
+        });
+        
+        closeModal('addMemberModal');
+        alert(`${user.name} добавлен!`);
+        showChatInfo(); // Refresh chat info
+    } catch (error) {
+        console.error('Error adding member:', error);
+        alert('Ошибка добавления участника');
+    }
+}
+
+window.addMemberConfirm = addMemberConfirm;
 
 window.showAddMemberDialog = showAddMemberDialog;
 

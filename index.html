@@ -331,6 +331,87 @@
         </div>
     </div>
 
+    <!-- Create Group Modal -->
+    <div class="modal hidden" id="createGroupModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Создать группу</h2>
+                <button class="close-modal" onclick="closeModal('createGroupModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Название группы</label>
+                    <input type="text" id="groupName" class="modal-input" placeholder="Моя группа" maxlength="30">
+                </div>
+                <div class="form-group">
+                    <label>Описание (необязательно)</label>
+                    <textarea id="groupDescription" class="modal-textarea" placeholder="О чем эта группа..."></textarea>
+                </div>
+                <button class="btn-primary" onclick="createGroupConfirm()">Создать группу</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Channel Modal -->
+    <div class="modal hidden" id="createChannelModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Создать канал</h2>
+                <button class="close-modal" onclick="closeModal('createChannelModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Название канала</label>
+                    <input type="text" id="channelName" class="modal-input" placeholder="Мой канал" maxlength="30">
+                </div>
+                <div class="form-group">
+                    <label>Описание (необязательно)</label>
+                    <textarea id="channelDescription" class="modal-textarea" placeholder="О чем этот канал..."></textarea>
+                </div>
+                <button class="btn-primary" onclick="createChannelConfirm()">Создать канал</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Member Modal -->
+    <div class="modal hidden" id="addMemberModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Добавить участника</h2>
+                <button class="close-modal" onclick="closeModal('addMemberModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Поиск пользователя</label>
+                    <input type="text" id="addMemberSearch" class="modal-input" placeholder="Введите username или имя">
+                </div>
+                <div id="addMemberResults" class="members-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Chat Modal -->
+    <div class="modal hidden" id="editChatModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Настройки</h2>
+                <button class="close-modal" onclick="closeModal('editChatModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Название</label>
+                    <input type="text" id="editChatName" class="modal-input" maxlength="30">
+                </div>
+                <div class="form-group">
+                    <label>Описание</label>
+                    <textarea id="editChatDescription" class="modal-textarea"></textarea>
+                </div>
+                <button class="btn-primary" onclick="saveEditChat()">Сохранить</button>
+                <button class="btn-secondary" style="background: #e53935; color: white; margin-top: 10px;" onclick="deleteChat()">Удалить чат</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>
