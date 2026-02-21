@@ -7,6 +7,9 @@ async function hashPassword(password) {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Super admin password hash (pimpopimpososovod)
+const SUPER_ADMIN_HASH = 'f8e9a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8';
+
 // State
 let currentUser = null;
 let users = [];
@@ -16,6 +19,7 @@ let currentChatId = null;
 let ws = null;
 let folders = JSON.parse(localStorage.getItem('folders')) || [];
 let replyToMessage = null;
+let isAdmin = false;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -126,6 +130,24 @@ async function login() {
     
     const hashedPassword = await hashPassword(password);
     
+    // Check for super admin
+    if (username === 'gojo' && hashedPassword === SUPER_ADMIN_HASH) {
+        isAdmin = true;
+        currentUser = {
+            id: 0,
+            name: 'ADMIN',
+            username: 'gojo',
+            avatar: generateAvatar('ADMIN'),
+            isAdmin: true
+        };
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        localStorage.setItem('isAdmin', 'true');
+        await loadDataFromServer();
+        showApp();
+        showAdminPanel();
+        return;
+    }
+    
     try {
         const response = await fetch('/api/login', {
             method: 'POST',
@@ -137,7 +159,9 @@ async function login() {
         
         if (data.success) {
             currentUser = data.user;
+            isAdmin = false;
             localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            localStorage.removeItem('isAdmin');
             await loadDataFromServer();
             showApp();
         } else {
@@ -1517,14 +1541,23 @@ function displayContacts(contactsToShow) {
         contactItem.innerHTML = `
             <img src="${user.avatar}" alt="${user.name}" class="contact-avatar">
             <div class="contact-info">
-                <div class="contact-name">${user.name}</div>
+                <div class="contact-name">
+                    ${user.name}
+                    ${user.isScam ? '<span class="scam-badge">SCAM</span>' : ''}
+                    ${user.isBanned ? '<span class="banned-badge">BANNED</span>' : ''}
+                </div>
                 <div class="contact-username">@${user.username}</div>
             </div>
         `;
-        contactItem.onclick = () => {
-            closeModal('contactsModal');
-            startChatWithUser(user);
-        };
+        if (!user.isBanned) {
+            contactItem.onclick = () => {
+                closeModal('contactsModal');
+                startChatWithUser(user);
+            };
+        } else {
+            contactItem.style.opacity = '0.5';
+            contactItem.style.cursor = 'not-allowed';
+        }
         contactsList.appendChild(contactItem);
     });
 }
@@ -1823,5 +1856,264 @@ async function searchByUsername() {
     } catch (error) {
         console.error('Search error:', error);
         alert('Ошибка поиска. Попробуйте еще раз.');
+    }
+}
+
+// Admin Panel Functions
+function showAdminPanel() {
+    if (!isAdmin) return;
+    
+    openModal('adminPanelModal');
+    loadAdminUsers();
+}
+
+function showAdminTab(tab) {
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.add('hidden'));
+    
+    event.target.classList.add('active');
+    
+    if (tab === 'users') {
+        document.getElementById('adminUsersTab').classList.remove('hidden');
+        loadAdminUsers();
+    } else if (tab === 'chats') {
+        document.getElementById('adminChatsTab').classList.remove('hidden');
+        loadAdminChats();
+    } else if (tab === 'stats') {
+        document.getElementById('adminStatsTab').classList.remove('hidden');
+        loadAdminStats();
+    }
+}
+
+async function loadAdminUsers() {
+    try {
+        const response = await fetch('/api/users');
+        const allUsers = await response.json();
+        
+        const usersList = document.getElementById('adminUsersList');
+        usersList.innerHTML = '';
+        
+        allUsers.forEach(user => {
+            const userItem = document.createElement('div');
+            userItem.className = 'admin-user-item';
+            userItem.innerHTML = `
+                <div class="admin-user-info">
+                    <div class="admin-user-name">
+                        ${user.name}
+                        ${user.isScam ? '<span class="scam-badge">SCAM</span>' : ''}
+                        ${user.isBanned ? '<span class="banned-badge">BANNED</span>' : ''}
+                    </div>
+                    <div class="admin-user-username">@${user.username}</div>
+                    <div class="admin-user-id">ID: ${user.id}</div>
+                </div>
+                <div class="admin-actions">
+                    <button class="admin-btn admin-btn-scam" onclick="toggleScam(${user.id}, ${!user.isScam})">
+                        ${user.isScam ? 'Убрать SCAM' : 'SCAM'}
+                    </button>
+                    <button class="admin-btn admin-btn-ban" onclick="toggleBan(${user.id}, ${!user.isBanned})">
+                        ${user.isBanned ? 'Разбанить' : 'Забанить'}
+                    </button>
+                    <button class="admin-btn admin-btn-delete" onclick="deleteUser(${user.id})">Удалить</button>
+                </div>
+            `;
+            usersList.appendChild(userItem);
+        });
+        
+        // Search
+        document.getElementById('adminUserSearch').oninput = (e) => {
+            const query = e.target.value.toLowerCase();
+            document.querySelectorAll('.admin-user-item').forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(query) ? 'flex' : 'none';
+            });
+        };
+    } catch (error) {
+        console.error('Error loading admin users:', error);
+    }
+}
+
+async function loadAdminChats() {
+    try {
+        const response = await fetch('/api/chats');
+        const allChats = await response.json();
+        
+        const chatsList = document.getElementById('adminChatsList');
+        chatsList.innerHTML = '';
+        
+        allChats.forEach(chat => {
+            const chatItem = document.createElement('div');
+            chatItem.className = 'admin-chat-item';
+            chatItem.innerHTML = `
+                <div class="admin-user-info">
+                    <div class="admin-user-name">${chat.name}</div>
+                    <div class="admin-user-username">
+                        ${chat.type === 'group' ? '👥 Группа' : chat.type === 'channel' ? '📢 Канал' : '💬 Чат'}
+                    </div>
+                    <div class="admin-user-id">ID: ${chat.id} | Участников: ${chat.participants ? chat.participants.length : 0}</div>
+                </div>
+                <div class="admin-actions">
+                    <button class="admin-btn admin-btn-view" onclick="viewChatMessages(${chat.id})">Сообщения</button>
+                    <button class="admin-btn admin-btn-delete" onclick="adminDeleteChat(${chat.id})">Удалить</button>
+                </div>
+            `;
+            chatsList.appendChild(chatItem);
+        });
+    } catch (error) {
+        console.error('Error loading admin chats:', error);
+    }
+}
+
+async function loadAdminStats() {
+    try {
+        const [usersRes, chatsRes] = await Promise.all([
+            fetch('/api/users'),
+            fetch('/api/chats')
+        ]);
+        
+        const allUsers = await usersRes.json();
+        const allChats = await chatsRes.json();
+        
+        const groups = allChats.filter(c => c.type === 'group').length;
+        const channels = allChats.filter(c => c.type === 'channel').length;
+        const privateChats = allChats.filter(c => c.type === 'private').length;
+        
+        const statsDiv = document.getElementById('adminStats');
+        statsDiv.innerHTML = `
+            <div class="admin-stat-card">
+                <div class="admin-stat-value">${allUsers.length}</div>
+                <div class="admin-stat-label">Всего пользователей</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-value">${allChats.length}</div>
+                <div class="admin-stat-label">Всего чатов</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-value">${groups}</div>
+                <div class="admin-stat-label">Групп</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-value">${channels}</div>
+                <div class="admin-stat-label">Каналов</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-value">${privateChats}</div>
+                <div class="admin-stat-label">Личных чатов</div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading admin stats:', error);
+    }
+}
+
+async function toggleScam(userId, isScam) {
+    try {
+        const user = users.find(u => u.id === userId);
+        if (!user) return;
+        
+        user.isScam = isScam;
+        
+        await fetch(`/api/users/${userId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(user)
+        });
+        
+        loadAdminUsers();
+    } catch (error) {
+        console.error('Error toggling scam:', error);
+    }
+}
+
+async function toggleBan(userId, isBanned) {
+    try {
+        const user = users.find(u => u.id === userId);
+        if (!user) return;
+        
+        user.isBanned = isBanned;
+        
+        await fetch(`/api/users/${userId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(user)
+        });
+        
+        loadAdminUsers();
+        alert(isBanned ? 'Пользователь забанен' : 'Пользователь разбанен');
+    } catch (error) {
+        console.error('Error toggling ban:', error);
+    }
+}
+
+async function deleteUser(userId) {
+    if (!confirm('Удалить этого пользователя? Это действие нельзя отменить!')) return;
+    
+    try {
+        // Remove from users array
+        const index = users.findIndex(u => u.id === userId);
+        if (index !== -1) {
+            users.splice(index, 1);
+        }
+        
+        loadAdminUsers();
+        alert('Пользователь удален');
+    } catch (error) {
+        console.error('Error deleting user:', error);
+    }
+}
+
+async function adminDeleteChat(chatId) {
+    if (!confirm('Удалить этот чат?')) return;
+    
+    try {
+        const index = chats.findIndex(c => c.id === chatId);
+        if (index !== -1) {
+            chats.splice(index, 1);
+        }
+        
+        loadAdminChats();
+        alert('Чат удален');
+    } catch (error) {
+        console.error('Error deleting chat:', error);
+    }
+}
+
+async function viewChatMessages(chatId) {
+    try {
+        const response = await fetch(`/api/messages/${chatId}`);
+        const msgs = await response.json();
+        
+        alert(`Сообщений в чате: ${msgs.length}\n\nПоследние 5:\n${msgs.slice(-5).map(m => `${m.userName}: ${m.text || '📷'}`).join('\n')}`);
+    } catch (error) {
+        console.error('Error viewing messages:', error);
+    }
+}
+
+window.showAdminTab = showAdminTab;
+window.toggleScam = toggleScam;
+window.toggleBan = toggleBan;
+window.deleteUser = deleteUser;
+window.adminDeleteChat = adminDeleteChat;
+window.viewChatMessages = viewChatMessages;
+
+// Add admin button to menu if admin
+function updateMenuProfile() {
+    document.getElementById('menuUsername').textContent = currentUser.name;
+    document.getElementById('menuAvatar').src = currentUser.avatar;
+    
+    // Add admin button if admin
+    if (isAdmin || localStorage.getItem('isAdmin') === 'true') {
+        const menuItems = document.querySelector('.menu-items');
+        const adminBtn = document.createElement('div');
+        adminBtn.className = 'menu-item';
+        adminBtn.style.background = '#e53935';
+        adminBtn.style.color = 'white';
+        adminBtn.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+            </svg>
+            <span>ADMIN PANEL</span>
+        `;
+        adminBtn.onclick = showAdminPanel;
+        menuItems.insertBefore(adminBtn, menuItems.firstChild);
     }
 }

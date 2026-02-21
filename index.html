@@ -412,6 +412,36 @@
         </div>
     </div>
 
+    <!-- Admin Panel Modal -->
+    <div class="modal hidden" id="adminPanelModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header" style="background: #e53935; color: white;">
+                <h2>🔴 ADMIN PANEL</h2>
+                <button class="close-modal" onclick="closeModal('adminPanelModal')" style="color: white;">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="admin-tabs">
+                    <button class="admin-tab active" onclick="showAdminTab('users')">Пользователи</button>
+                    <button class="admin-tab" onclick="showAdminTab('chats')">Чаты</button>
+                    <button class="admin-tab" onclick="showAdminTab('stats')">Статистика</button>
+                </div>
+                
+                <div id="adminUsersTab" class="admin-tab-content">
+                    <input type="text" class="modal-input" id="adminUserSearch" placeholder="Поиск пользователей...">
+                    <div id="adminUsersList" class="admin-list"></div>
+                </div>
+                
+                <div id="adminChatsTab" class="admin-tab-content hidden">
+                    <div id="adminChatsList" class="admin-list"></div>
+                </div>
+                
+                <div id="adminStatsTab" class="admin-tab-content hidden">
+                    <div id="adminStats" class="admin-stats"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

@@ -1611,3 +1611,163 @@ body.dark-mode .chat-info-avatar-section p {
 body.dark-mode .chat-info-section h4 {
     color: #a2acb4;
 }
+
+/* Admin Panel Styles */
+.admin-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.admin-tab {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #707579;
+    transition: all 0.2s;
+}
+
+.admin-tab.active {
+    color: #e53935;
+    border-bottom-color: #e53935;
+}
+
+.admin-tab:hover {
+    color: #e53935;
+}
+
+.admin-tab-content {
+    min-height: 400px;
+}
+
+.admin-list {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.admin-user-item,
+.admin-chat-item {
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.admin-user-info {
+    flex: 1;
+}
+
+.admin-user-name {
+    font-size: 15px;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.admin-user-username {
+    font-size: 13px;
+    color: #707579;
+}
+
+.admin-user-id {
+    font-size: 12px;
+    color: #a2acb4;
+}
+
+.admin-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.admin-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.admin-btn:hover {
+    opacity: 0.8;
+}
+
+.admin-btn-scam {
+    background: #e53935;
+    color: white;
+}
+
+.admin-btn-ban {
+    background: #ff9800;
+    color: white;
+}
+
+.admin-btn-delete {
+    background: #f44336;
+    color: white;
+}
+
+.admin-btn-view {
+    background: #3390ec;
+    color: white;
+}
+
+.scam-badge {
+    color: #e53935;
+    font-weight: bold;
+    font-size: 11px;
+    margin-left: 5px;
+}
+
+.banned-badge {
+    color: #ff9800;
+    font-weight: bold;
+    font-size: 11px;
+    margin-left: 5px;
+}
+
+.admin-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.admin-stat-card {
+    padding: 20px;
+    background: #f4f4f5;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.admin-stat-value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #3390ec;
+    margin-bottom: 5px;
+}
+
+.admin-stat-label {
+    font-size: 14px;
+    color: #707579;
+}
+
+body.dark-mode .admin-tabs {
+    border-bottom-color: #0f1419;
+}
+
+body.dark-mode .admin-user-item,
+body.dark-mode .admin-chat-item {
+    border-color: #0f1419;
+    background: #17212b;
+}
+
+body.dark-mode .admin-stat-card {
+    background: #17212b;
+}
